@@ -2,8 +2,9 @@
 
 use crate::btree::kv::nodeinterface::BNodeReadInterface;
 use crate::btree::kv::nodeinterface::BNodeWriteInterface;
-use crate::btree::kv::HEADER;
+use crate::btree::HEADER;
 use crate::btree::BNODE_NODE;
+use crate::btree::BNODE_LEAF;
 
 pub struct BNode {
     data: Box<[u8]>,
@@ -30,7 +31,7 @@ impl BNodeWriteInterface for BNode{
         }
     }
 
-    fn setHeader(& mut self, nodetype: u16, keynumber: u16) {
+    fn set_header(& mut self, nodetype: u16, keynumber: u16) {
 
         let bytes_nodetype: [u8; 2] = nodetype.to_le_bytes();
         let bytes_nkeys: [u8; 2] = keynumber.to_le_bytes();
@@ -39,7 +40,7 @@ impl BNodeWriteInterface for BNode{
         self.data[2..4].copy_from_slice(&bytes_nkeys);
     }
     //Pointers
-    fn setPtr(&mut self, idx: usize, value: u64) {
+    fn set_ptr(&mut self, idx: usize, value: u64) {
         assert!(idx < self.nkeys().into(), "Assertion failed: idx is large or equal nkeys!");
         let bytes_le: [u8; 8] = value.to_le_bytes();
         let pos:usize = HEADER + 8 * idx;
@@ -47,16 +48,16 @@ impl BNodeWriteInterface for BNode{
         self.data[pos..pos + 8].copy_from_slice(&bytes_le);
     }
 
-    fn setOffSet(&mut self,idx:u16,offset:u16){
-        let pos = self.offsetPos(idx);
+    fn set_offSet(&mut self,idx:u16,offset:u16){
+        let pos = self.offset_pos(idx);
 
         let bytes_le: [u8; 2] = offset.to_le_bytes();
         self.data[pos..pos + 2].copy_from_slice(&bytes_le);
     }
 
-    fn nodeAppendKV(&mut self, idx: u16, ptr: u64, key: &[u8], val: &[u8])
+    fn node_append_kv(&mut self, idx: u16, ptr: u64, key: &[u8], val: &[u8])
     {
-        self.setPtr(idx as usize, ptr);
+        self.set_ptr(idx as usize, ptr);
         let pos = self.kvPos(idx);
 
         let klen = key.len() as u16;
@@ -77,13 +78,13 @@ impl BNodeWriteInterface for BNode{
             self.data[pos+4+key.len()+idx1] = val[idx1];
         }
 
-        let offset = self.getOffSet(idx) + 4 + klen + vlen;
-        self.setOffSet(idx+1,offset);
+        let offset = self.get_offSet(idx) + 4 + klen + vlen;
+        self.set_offSet(idx+1,offset);
     }   
     
-    fn nodeAppendRange<T:BNodeReadInterface>(&mut self, old: &T, dstNew: u16, srcOld: u16, number: u16){
-        assert!(srcOld + number <= old.nkeys());
-        assert!(dstNew + number <= self.nkeys());
+    fn node_append_range<T:BNodeReadInterface>(&mut self, old: &T, dst_new: u16, src_old: u16, number: u16){
+        assert!(src_old + number <= old.nkeys());
+        assert!(dst_new + number <= self.nkeys());
 
         if number == 0 {
             return;
@@ -91,37 +92,51 @@ impl BNodeWriteInterface for BNode{
 
         //Copy Pointers
         for i in 0..number {
-            self.setPtr((dstNew + i) as usize, old.getPtr((srcOld + i) as usize));
+            self.set_ptr((dst_new + i) as usize, old.get_ptr((src_old + i) as usize));
         }
 
-        println!("SrcOld:{:?} number:{:?}",srcOld,number);
+        println!("SrcOld:{:?} number:{:?}",src_old,number);
         //Copy Offsets
-        let dstBegin = self.getOffSet(dstNew);
-        let srcBegin = old.getOffSet(srcOld);
+        let dstBegin = self.get_offSet(dst_new);
+        let srcBegin = old.get_offSet(src_old);
 
         for i in 1..number+1 //Range [1..n]
         {
-            let offset = old.getOffSet(srcOld + i) - srcBegin + dstBegin;
-            self.setOffSet(dstNew + i, offset);
+            let offset = old.get_offSet(src_old + i) - srcBegin + dstBegin;
+            self.set_offSet(dst_new + i, offset);
         }
 
         //Copy kvs
-        let begin = old.kvPos(srcOld);
-        let end = old.kvPos(srcOld + number);
-        println!("Begin:{:?} End:{:?}",begin,end);
+        let begin = old.kvPos(src_old);
+        let end = old.kvPos(src_old + number);
+        //println!("Begin:{:?} End:{:?}",begin,end);
         let len: u16 = (end - begin) as u16;
         for i in 0..len {
             let idx = i as usize;
-            let newBegin = self.kvPos(dstNew);
+            let newBegin = self.kvPos(dst_new);
             self.data[ newBegin + idx] = old.data()[begin+idx];
         }
     }
 
-    fn leafInsert<T:BNodeReadInterface>(&mut self, old:&T, idx: u16, key: &[u8], val: &[u8]){
-        self.setHeader(crate::btree::BNODE_LEAF, old.nkeys() + 1);
-        self.nodeAppendRange(old, 0, 0, idx);
-        self.nodeAppendKV(idx, 0, key, val);
-        self.nodeAppendRange(old, idx + 1, idx, old.nkeys() - idx);
+    fn leaf_insert<T:BNodeReadInterface>(&mut self, old:&T, idx: u16, key: &[u8], val: &[u8]){
+        self.set_header(crate::btree::BNODE_LEAF, old.nkeys() + 1);
+        self.node_append_range(old, 0, 0, idx);
+        self.node_append_kv(idx, 0, key, val);
+        self.node_append_range(old, idx + 1, idx, old.nkeys() - idx);
+    }
+
+    fn leaf_update<T:BNodeReadInterface>(&mut self, old:&T, idx: u16, key: &[u8], val: &[u8]){
+        self.set_header(crate::btree::BNODE_LEAF, old.nkeys());
+        self.node_append_range(old, 0, 0, idx);
+        self.node_append_kv(idx, 0, key, val);
+        self.node_append_range(old, idx + 1, idx + 1, old.nkeys() - idx - 1);
+    }
+
+     // remove a key from a leaf node
+     fn leaf_delete<T:BNodeReadInterface>(&mut self, old:&T, idx: u16) {
+        self.set_header(BNODE_LEAF, old.nkeys() - 1);
+        self.node_append_range(old, 0, 0, idx);
+        self.node_append_range(old, idx, idx + 1, old.nkeys() - (idx + 1));
     }
 }
 
@@ -159,7 +174,7 @@ impl BNodeReadInterface for BNode {
     fn nkeys(&self) -> u16 {
         return u16::from_le_bytes(self.data[2..4].try_into().unwrap());
     }
-    fn getPtr(&self, idx: usize) -> u64 {
+    fn get_ptr(&self, idx: usize) -> u64 {
         assert!(idx < self.nkeys().into(), "Assertion failed: idx is large or equal nkeys!");
         let pos:usize = HEADER + 8 * idx;
         let value: u64 = u64::from_le_bytes(self.data[pos..pos + 8].try_into().unwrap());
@@ -167,30 +182,30 @@ impl BNodeReadInterface for BNode {
         return value;
     }
 
-    fn offsetPos(&self, idx: u16)->usize{
+    fn offset_pos(&self, idx: u16)->usize{
         assert!(1 <= idx && idx <= self.nkeys());
         let r =  8 * self.nkeys() + 2 * (idx - 1);
         let value_usize: usize = HEADER +  r as usize;
         return value_usize;
     }
 
-    fn getOffSet(&self,idx:u16) -> u16{
+    fn get_offSet(&self,idx:u16) -> u16{
         if idx == 0
         {
             return 0;
         }
 
-        let pos = self.offsetPos(idx);
+        let pos = self.offset_pos(idx);
         return u16::from_le_bytes(self.data[pos..pos+2].try_into().unwrap());
     }
     fn kvPos(&self, idx: u16)-> usize{
         assert!(idx <= self.nkeys());
-        let r =  8 * self.nkeys() + 2 * self.nkeys() + self.getOffSet(idx);
+        let r =  8 * self.nkeys() + 2 * self.nkeys() + self.get_offSet(idx);
         let value_usize: usize = HEADER +  r as usize;
         return value_usize;
     }
 
-    fn getVal(&self, idx: u16)-> &[u8]{
+    fn get_val(&self, idx: u16)-> &[u8]{
         assert!(idx <= self.nkeys());
         let pos = self.kvPos(idx);
         let klen = u16::from_le_bytes(self.data[pos..pos+2].try_into().unwrap()) as usize;
@@ -198,7 +213,7 @@ impl BNodeReadInterface for BNode {
         return &self.data[pos+4+klen..pos+4+klen+vlen];
     }
 
-    fn getKey(&self, idx: u16)-> &[u8]{
+    fn get_key(&self, idx: u16)-> &[u8]{
         assert!(idx <= self.nkeys());
         let pos = self.kvPos(idx);
         let klen = u16::from_le_bytes(self.data[pos..pos+2].try_into().unwrap()) as usize;
@@ -209,7 +224,7 @@ impl BNodeReadInterface for BNode {
         let count = self.nkeys();
         let mut found:u16 = 0;
         for i in 0..count{
-            let k = self.getKey(i);
+            let k = self.get_key(i);
             let comp = crate::btree::util::compare_arrays(k,key);
             if comp <= 0 {found = i;}
             if comp > 0 { break; } 
@@ -243,9 +258,9 @@ mod tests {
     {
         let mut nodeA = BNode::new(1024);
         const ptr: u64 = 23;
-        nodeA.setHeader(BNODE_NODE, 20);
-        nodeA.setPtr(19, ptr);
-        assert_eq!(ptr, nodeA.getPtr(19));
+        nodeA.set_header(BNODE_NODE, 20);
+        nodeA.set_ptr(19, ptr);
+        assert_eq!(ptr, nodeA.get_ptr(19));
         
         let t = nodeA.btype();
 
@@ -253,10 +268,10 @@ mod tests {
         assert_eq!(t,BNODE_NODE);
 
         let offset: u16 = 0x1234;
-        nodeA.setOffSet(1, offset);
-        nodeA.setOffSet(2, offset);
+        nodeA.set_offSet(1, offset);
+        nodeA.set_offSet(2, offset);
 
-        assert_eq!(offset,nodeA.getOffSet(1));
+        assert_eq!(offset,nodeA.get_offSet(1));
     }
 
     #[test]
@@ -264,16 +279,16 @@ mod tests {
     {
         let mut root = BNode::new(1024);
         const ptr: u64 = 23;
-        root.setHeader(BNODE_NODE, 3);
-        root.nodeAppendKV(0, 0, "".as_bytes(), "".as_bytes());
-        root.nodeAppendKV(1, 0, "1111".as_bytes(), "5555555".as_bytes());
-        root.nodeAppendKV(2, 0, "2222".as_bytes(), "eeeeeee".as_bytes());
+        root.set_header(BNODE_NODE, 3);
+        root.node_append_kv(0, 0, "".as_bytes(), "".as_bytes());
+        root.node_append_kv(1, 0, "1111".as_bytes(), "5555555".as_bytes());
+        root.node_append_kv(2, 0, "2222".as_bytes(), "eeeeeee".as_bytes());
 
         //root.print();
 
-        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.getKey(0),root.getVal(0),root.getOffSet(0),root.kvPos(0));
-        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.getKey(1),root.getVal(1),root.getOffSet(1),root.kvPos(1));
-        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.getKey(2),root.getVal(2),root.getOffSet(2),root.kvPos(2));
+        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.get_key(0),root.get_val(0),root.get_offSet(0),root.kvPos(0));
+        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.get_key(1),root.get_val(1),root.get_offSet(1),root.kvPos(1));
+        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.get_key(2),root.get_val(2),root.get_offSet(2),root.kvPos(2));
 
     }
 
@@ -282,18 +297,18 @@ mod tests {
     {
         std::env::set_var("RUST_BACKTRACE", "1");
         let mut root = BNode::new(1024);
-        root.setHeader(BNODE_NODE, 3);
-        root.nodeAppendKV(0, 0, "".as_bytes(), "".as_bytes());
-        root.nodeAppendKV(1, 0, "1111".as_bytes(), "1111111".as_bytes());
-        root.nodeAppendKV(2, 0, "3333".as_bytes(), "3333333".as_bytes());
+        root.set_header(BNODE_NODE, 3);
+        root.node_append_kv(0, 0, "".as_bytes(), "".as_bytes());
+        root.node_append_kv(1, 0, "1111".as_bytes(), "1111111".as_bytes());
+        root.node_append_kv(2, 0, "3333".as_bytes(), "3333333".as_bytes());
 
         let mut node = BNode::new(1024);
-        node.setHeader(BNODE_NODE, 4);
-        node.leafInsert(&root,1,"2222".as_bytes(), "2222222".as_bytes());
-        node.print();
+        node.set_header(BNODE_NODE, 4);
+        node.leaf_insert(&root,1,"2222".as_bytes(), "2222222".as_bytes());
+        //node.print();
 
-        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",node.getKey(1),node.getVal(1),node.getOffSet(1),node.kvPos(1));
-        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",node.getKey(2),node.getVal(2),node.getOffSet(2),node.kvPos(2));
+        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",node.get_key(1),node.get_val(1),node.get_offSet(1),node.kvPos(1));
+        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",node.get_key(2),node.get_val(2),node.get_offSet(2),node.kvPos(2));
 
     }
 }
