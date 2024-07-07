@@ -2,6 +2,7 @@
 
 use crate::btree::kv::nodeinterface::BNodeReadInterface;
 use crate::btree::kv::nodeinterface::BNodeWriteInterface;
+use crate::btree::kv::nodeinterface::BNodeOperationInterface;
 use crate::btree::HEADER;
 use crate::btree::BNODE_NODE;
 use crate::btree::BNODE_LEAF;
@@ -18,8 +19,91 @@ impl BNode{
             size:size
         }
     }
+}
 
+impl BNodeOperationInterface for BNode{
 
+    fn findSplitIdx(&self)-> u16{
+        let number = self.nkeys();
+        let lastPos = self.kvPos(number) as u16;
+
+        let mut find:u16 = number -1;
+        let mut pos:u16 = lastPos as u16;
+
+        let mut keyCount: u16 = 1;
+        let mut kvSize: u16 = (((crate::btree::BTREE_PAGE_SIZE - HEADER as usize - 10 * keyCount as usize) * 2) / 3 ) as u16; //Todo,just page plit
+
+        while (find > 0) {
+            kvSize = (((crate::btree::BTREE_PAGE_SIZE - HEADER as usize - 10 * keyCount as usize) * 2) / 3) as u16;
+            pos = self.kvPos(find) as u16;
+
+            //std.debug.print("KVSize{d} pos:{d} lastpos:{d}\n", .{ kvSize, pos, lastPos });
+            if  lastPos - pos < kvSize {
+                keyCount = keyCount + 1;
+                find = find - 1;
+            } else {
+                break;
+            }
+        }
+
+        return find + 1;
+    } 
+
+    // split a bigger-than-allowed node into two.
+    // the second node always fits on a page.
+    fn nodeSplit2<T:BNodeWriteInterface>(&self,left: &mut T, right: &mut T){
+        let idx = self.findSplitIdx();
+        //std.debug.print("Split Index:{d} Old Node Type {d}", .{ idx, old.btype() });
+        left.set_header(self.btype(), idx);
+        right.set_header(self.btype(), self.nkeys() - idx);
+
+        left.node_append_range(self, 0, 0, idx);
+        right.node_append_range(self, 0, idx, self.nkeys() - idx);
+    }
+
+    // split a node if it's too big. the results are 1~3 nodes.
+    fn nodeSplit3(&self) -> (Option<BNode>,Option<BNode>,Option<BNode>){
+
+        if self.nbytes() <= crate::btree::BTREE_PAGE_SIZE {
+            let mut nodeA = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+            for i in 0..crate::btree::BTREE_PAGE_SIZE
+            {
+                nodeA.data[i] = self.data[i];
+            }
+            return (Some(nodeA),None,None);
+        }
+
+        let mut left = BNode::new(crate::btree::BTREE_PAGE_SIZE * 2);
+        let mut right = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+
+        self.nodeSplit2(&mut left,&mut right);
+        if (left.nbytes() <= crate::btree::BTREE_PAGE_SIZE) {
+            return (Some(left),Some(right),None);
+        }
+
+        let mut leftleft = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+        let mut middle = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+        left.nodeSplit2(&mut leftleft,&mut middle);
+        return (Some(leftleft),Some(middle),Some(right));
+    }
+
+    fn nodeMerge<T:BNodeReadInterface>(&mut self, left: &T, right: &T)
+    {
+        self.set_header(left.btype(), left.nkeys() + right.nkeys());
+        self.node_append_range(left, 0, 0, left.nkeys());
+        self.node_append_range(right, left.nkeys(), 0, right.nkeys());
+    }
+
+    fn nodeReplace2Kid<T:BNodeReadInterface>(&mut self, oldNode: &T, idx: u16, ptrMergedNode: u64, key: &[u8]){
+        self.set_header(BNODE_NODE, oldNode.nkeys() - 1);
+        //oldNode.print();
+
+        self.node_append_range(oldNode, 0, 0, idx);
+        self.node_append_kv(idx, ptrMergedNode, key, &[0;1]);
+        self.node_append_range(oldNode, idx + 1, idx + 2, oldNode.nkeys() - idx - 2);
+        //std.debug.print("Node after nodereplace2kid.\n", .{});
+        //newNode.print();
+    }
 }
 
 impl BNodeWriteInterface for BNode{
@@ -43,7 +127,7 @@ impl BNodeWriteInterface for BNode{
     fn set_ptr(&mut self, idx: usize, value: u64) {
         assert!(idx < self.nkeys().into(), "Assertion failed: idx is large or equal nkeys!");
         let bytes_le: [u8; 8] = value.to_le_bytes();
-        let pos:usize = HEADER + 8 * idx;
+        let pos:usize = (HEADER + 8 * (idx as u16)) as usize;
 
         self.data[pos..pos + 8].copy_from_slice(&bytes_le);
     }
@@ -94,8 +178,6 @@ impl BNodeWriteInterface for BNode{
         for i in 0..number {
             self.set_ptr((dst_new + i) as usize, old.get_ptr((src_old + i) as usize));
         }
-
-        println!("SrcOld:{:?} number:{:?}",src_old,number);
         //Copy Offsets
         let dstBegin = self.get_offSet(dst_new);
         let srcBegin = old.get_offSet(src_old);
@@ -138,6 +220,8 @@ impl BNodeWriteInterface for BNode{
         self.node_append_range(old, 0, 0, idx);
         self.node_append_range(old, idx, idx + 1, old.nkeys() - (idx + 1));
     }
+
+    
 }
 
 impl BNodeReadInterface for BNode {
@@ -155,28 +239,12 @@ impl BNodeReadInterface for BNode {
         return u16::from_le_bytes(self.data[0..2].try_into().unwrap());
     }
 
-    // fn set_value(&mut self, index: usize, value: u8) {
-    //     if index < self.data.len() {
-    //         self.data[index] = value;
-    //     } else {
-    //         println!("Index out of bounds");
-    //     }
-    // }
-
-    // fn get_value(&self, index: usize) -> Option<u8> {
-    //     if index < self.data.len() {
-    //         Some(self.data[index])
-    //     } else {
-    //         None
-    //     }
-    // }
-
     fn nkeys(&self) -> u16 {
         return u16::from_le_bytes(self.data[2..4].try_into().unwrap());
     }
     fn get_ptr(&self, idx: usize) -> u64 {
         assert!(idx < self.nkeys().into(), "Assertion failed: idx is large or equal nkeys!");
-        let pos:usize = HEADER + 8 * idx;
+        let pos:usize = (HEADER + 8 * (idx as u16)) as usize;
         let value: u64 = u64::from_le_bytes(self.data[pos..pos + 8].try_into().unwrap());
 
         return value;
@@ -185,7 +253,7 @@ impl BNodeReadInterface for BNode {
     fn offset_pos(&self, idx: u16)->usize{
         assert!(1 <= idx && idx <= self.nkeys());
         let r =  8 * self.nkeys() + 2 * (idx - 1);
-        let value_usize: usize = HEADER +  r as usize;
+        let value_usize: usize = (HEADER +  r) as usize;
         return value_usize;
     }
 
@@ -201,7 +269,7 @@ impl BNodeReadInterface for BNode {
     fn kvPos(&self, idx: u16)-> usize{
         assert!(idx <= self.nkeys());
         let r =  8 * self.nkeys() + 2 * self.nkeys() + self.get_offSet(idx);
-        let value_usize: usize = HEADER +  r as usize;
+        let value_usize: usize = (HEADER +  r) as usize;
         return value_usize;
     }
 
@@ -232,6 +300,10 @@ impl BNodeReadInterface for BNode {
         return found;
     }
 
+        //node size in bytes
+        fn nbytes(&self)-> usize {
+            return self.kvPos(self.nkeys());
+        }
 
     fn print(&self) {
         for i in 0..self.size {
@@ -286,9 +358,9 @@ mod tests {
 
         //root.print();
 
-        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.get_key(0),root.get_val(0),root.get_offSet(0),root.kvPos(0));
-        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.get_key(1),root.get_val(1),root.get_offSet(1),root.kvPos(1));
-        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.get_key(2),root.get_val(2),root.get_offSet(2),root.kvPos(2));
+        //println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.get_key(0),root.get_val(0),root.get_offSet(0),root.kvPos(0));
+        //println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.get_key(1),root.get_val(1),root.get_offSet(1),root.kvPos(1));
+        //println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",root.get_key(2),root.get_val(2),root.get_offSet(2),root.kvPos(2));
 
     }
 
@@ -307,8 +379,84 @@ mod tests {
         node.leaf_insert(&root,1,"2222".as_bytes(), "2222222".as_bytes());
         //node.print();
 
-        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",node.get_key(1),node.get_val(1),node.get_offSet(1),node.kvPos(1));
-        println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",node.get_key(2),node.get_val(2),node.get_offSet(2),node.kvPos(2));
+        //println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",node.get_key(1),node.get_val(1),node.get_offSet(1),node.kvPos(1));
+        //println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",node.get_key(2),node.get_val(2),node.get_offSet(2),node.kvPos(2));
 
+    }
+
+    #[test]
+    fn test_leafupdate()
+    {
+        std::env::set_var("RUST_BACKTRACE", "1");
+        let mut root = BNode::new(1024);
+        root.set_header(BNODE_NODE, 2);
+        root.node_append_kv(0, 0, "".as_bytes(), "".as_bytes());
+        root.node_append_kv(1, 0, "1111".as_bytes(), "1111111".as_bytes());
+
+        let mut node = BNode::new(1024);
+        node.set_header(BNODE_NODE, 2);
+        node.leaf_update(&root,1,"1111".as_bytes(), "33333333".as_bytes());
+        //node.print();
+
+        //println!("Key:{:?} Val:{:?} OffSet:{:?} KVPos:{:?}",node.get_key(1),node.get_val(1),node.get_offSet(1),node.kvPos(1));
+
+    }
+
+    #[test]
+    fn test_nodesplit2()
+    {
+        std::env::set_var("RUST_BACKTRACE", "1");
+        let mut root = BNode::new(4096);
+        root.set_header(BNODE_NODE, 2);
+        root.node_append_kv(0, 0, "".as_bytes(), "".as_bytes());
+        root.node_append_kv(1, 0, "1".as_bytes(), &[49; 2000]);
+
+        let mut node = BNode::new(4096 * 2);
+        node.leaf_insert(&root,2,"2".as_bytes(), &[50; 2000]);
+        //node.print();
+
+        let idx = node.findSplitIdx();
+
+        let mut left = BNode::new(4096);
+        let mut right = BNode::new(4096);
+        node.nodeSplit2(&mut left,&mut right);
+
+        //left.print();
+        //right.print();
+
+    }
+
+    #[test]
+    fn test_nodesplit3()
+    {
+        std::env::set_var("RUST_BACKTRACE", "1");
+        let mut root = BNode::new(4096);
+        root.set_header(BNODE_NODE, 2);
+        root.node_append_kv(0, 0, "".as_bytes(), "".as_bytes());
+        root.node_append_kv(1, 0, "1".as_bytes(), &[49; 2500]);
+
+        let mut node = BNode::new(4096 * 2);
+        node.leaf_insert(&root,2,"2".as_bytes(), &[50; 2500]);
+        //node.print();
+
+        let mut node1 = BNode::new(4096 * 2);
+        node1.leaf_insert(&node,2,"3".as_bytes(), &[51; 2500]);
+       //node1.print();
+
+        let (n1,n2,n3) = node1.nodeSplit3();
+
+        // match n1{
+        //     Some(n) => n.print(),
+        //     None => {}
+        // }
+
+        // match n2{
+        //     Some(n) => n.print(),
+        //     None => {}
+        // }
+        // match n3{
+        //     Some(n) => n.print(),
+        //     None => {}
+        // }
     }
 }

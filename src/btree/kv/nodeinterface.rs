@@ -1,3 +1,5 @@
+use super::node::BNode;
+
 
 // 定义读取接口
 pub trait BNodeReadInterface {
@@ -13,6 +15,7 @@ pub trait BNodeReadInterface {
     fn get_key(&self, idx: u16)-> &[u8];
     fn get_val(&self, idx: u16)-> &[u8];
     fn nodeLookupLE(&self, key: &[u8])-> u16;
+    fn nbytes(&self)-> usize;
 }
 
 pub trait BNodeWriteInterface{
@@ -25,4 +28,12 @@ pub trait BNodeWriteInterface{
     fn leaf_insert<T:BNodeReadInterface>(&mut self, old:&T, idx: u16, key: &[u8], val: &[u8]);
     fn leaf_update<T:BNodeReadInterface>(&mut self, old:&T, idx: u16, key: &[u8], val: &[u8]);
     fn leaf_delete<T:BNodeReadInterface>(&mut self, old:&T, idx: u16);
+}
+
+pub trait BNodeOperationInterface{
+    fn findSplitIdx(&self)-> u16;
+    fn nodeSplit2<T:BNodeWriteInterface>(&self, right: &mut T, left: &mut T);
+    fn nodeSplit3(&self) -> (Option<BNode>,Option<BNode>,Option<BNode>);
+    fn nodeMerge<T:BNodeReadInterface>(&mut self, left: &T, right: &T);
+    fn nodeReplace2Kid<T:BNodeReadInterface>(&mut self, oldNode: &T, idx: u16, ptrMergedNode: u64, key: &[u8]); 
 }

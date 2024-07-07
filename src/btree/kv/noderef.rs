@@ -33,7 +33,7 @@ impl<'a> BNodeReadInterface for BNodeRef<'a> {
     }
     fn get_ptr(&self, idx: usize) -> u64 {
         assert!(idx < self.nkeys().into(), "Assertion failed: idx is large or equal nkeys!");
-        let pos:usize = HEADER + 8 * idx;
+        let pos:usize = (HEADER + 8 * idx as u16) as usize;
         let value: u64 = u64::from_le_bytes(self.data[pos..pos + 8].try_into().unwrap());
 
         return value;
@@ -42,7 +42,7 @@ impl<'a> BNodeReadInterface for BNodeRef<'a> {
     fn offset_pos(&self, idx: u16)->usize{
         assert!(1 <= idx && idx <= self.nkeys());
         let r =  8 * self.nkeys() + 2 * (idx - 1);
-        let value_usize: usize = HEADER +  r as usize;
+        let value_usize: usize = (HEADER +  r) as usize;
         return value_usize;
     }
 
@@ -58,7 +58,7 @@ impl<'a> BNodeReadInterface for BNodeRef<'a> {
     fn kvPos(&self, idx: u16)-> usize{
         assert!(idx <= self.nkeys());
         let r =  8 * self.nkeys() + 2 * self.nkeys() + self.get_offSet(idx);
-        let value_usize: usize = HEADER +  r as usize;
+        let value_usize: usize = (HEADER +  r) as usize;
         return value_usize;
     }
 
@@ -68,6 +68,11 @@ impl<'a> BNodeReadInterface for BNodeRef<'a> {
         let klen = u16::from_le_bytes(self.data[pos..pos+2].try_into().unwrap()) as usize;
         let vlen = u16::from_le_bytes(self.data[pos+2..pos+4].try_into().unwrap()) as usize;
         return &self.data[pos+4+klen..pos+4+klen+vlen];
+    }
+
+    //node size in bytes
+    fn nbytes(&self)-> usize {
+        return self.kvPos(self.nkeys());
     }
 
     fn get_key(&self, idx: u16)-> &[u8]{
