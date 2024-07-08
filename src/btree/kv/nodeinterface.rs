@@ -33,7 +33,8 @@ pub trait BNodeWriteInterface{
 pub trait BNodeOperationInterface{
     fn findSplitIdx(&self)-> u16;
     fn nodeSplit2<T:BNodeWriteInterface>(&self, right: &mut T, left: &mut T);
-    fn nodeSplit3(&self) -> (Option<BNode>,Option<BNode>,Option<BNode>);
+    fn nodeSplit3(&self) -> (u16,Option<BNode>,Option<BNode>,Option<BNode>);
     fn nodeMerge<T:BNodeReadInterface>(&mut self, left: &T, right: &T);
     fn nodeReplace2Kid<T:BNodeReadInterface>(&mut self, oldNode: &T, idx: u16, ptrMergedNode: u64, key: &[u8]); 
+    fn nodeReplaceKidN<T:BNodeReadInterface>(&mut self, oldNode: &T, idx: u16,kvs:Vec<(u64,Vec<u8>)>);
 }

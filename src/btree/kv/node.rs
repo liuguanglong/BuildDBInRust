@@ -1,5 +1,3 @@
-
-
 use crate::btree::kv::nodeinterface::BNodeReadInterface;
 use crate::btree::kv::nodeinterface::BNodeWriteInterface;
 use crate::btree::kv::nodeinterface::BNodeOperationInterface;
@@ -16,7 +14,14 @@ impl BNode{
     pub fn new(size:usize) -> Self {
         BNode {
             data: vec![0; size].into_boxed_slice(),
-            size:size
+            size:size,
+        }
+    }
+
+    pub fn copy(&self) ->Self{
+        BNode{
+            data:self.data.clone(),
+            size:self.size,
         }
     }
 }
@@ -33,7 +38,7 @@ impl BNodeOperationInterface for BNode{
         let mut keyCount: u16 = 1;
         let mut kvSize: u16 = (((crate::btree::BTREE_PAGE_SIZE - HEADER as usize - 10 * keyCount as usize) * 2) / 3 ) as u16; //Todo,just page plit
 
-        while (find > 0) {
+        while find > 0 {
             kvSize = (((crate::btree::BTREE_PAGE_SIZE - HEADER as usize - 10 * keyCount as usize) * 2) / 3) as u16;
             pos = self.kvPos(find) as u16;
 
@@ -62,7 +67,7 @@ impl BNodeOperationInterface for BNode{
     }
 
     // split a node if it's too big. the results are 1~3 nodes.
-    fn nodeSplit3(&self) -> (Option<BNode>,Option<BNode>,Option<BNode>){
+    fn nodeSplit3(&self) -> (u16,Option<BNode>,Option<BNode>,Option<BNode>){
 
         if self.nbytes() <= crate::btree::BTREE_PAGE_SIZE {
             let mut nodeA = BNode::new(crate::btree::BTREE_PAGE_SIZE);
@@ -70,7 +75,7 @@ impl BNodeOperationInterface for BNode{
             {
                 nodeA.data[i] = self.data[i];
             }
-            return (Some(nodeA),None,None);
+            return (1,Some(nodeA),None,None);
         }
 
         let mut left = BNode::new(crate::btree::BTREE_PAGE_SIZE * 2);
@@ -78,13 +83,13 @@ impl BNodeOperationInterface for BNode{
 
         self.nodeSplit2(&mut left,&mut right);
         if (left.nbytes() <= crate::btree::BTREE_PAGE_SIZE) {
-            return (Some(left),Some(right),None);
+            return (2,Some(left),Some(right),None);
         }
 
         let mut leftleft = BNode::new(crate::btree::BTREE_PAGE_SIZE);
         let mut middle = BNode::new(crate::btree::BTREE_PAGE_SIZE);
         left.nodeSplit2(&mut leftleft,&mut middle);
-        return (Some(leftleft),Some(middle),Some(right));
+        return (3,Some(leftleft),Some(middle),Some(right));
     }
 
     fn nodeMerge<T:BNodeReadInterface>(&mut self, left: &T, right: &T)
@@ -103,6 +108,19 @@ impl BNodeOperationInterface for BNode{
         self.node_append_range(oldNode, idx + 1, idx + 2, oldNode.nkeys() - idx - 2);
         //std.debug.print("Node after nodereplace2kid.\n", .{});
         //newNode.print();
+    }
+
+    fn nodeReplaceKidN<T:BNodeReadInterface>(&mut self, oldNode: &T, idx: u16,kvs:Vec<(u64,Vec<u8>)>) {
+
+        self.set_header(crate::btree::BNODE_NODE, oldNode.nkeys() + kvs.len() as u16 - 1);
+        self.node_append_range(oldNode, 0, 0, idx);
+
+        for i in 0..kvs.len()
+        {
+            self.node_append_kv(idx + i as u16, kvs[i].0, &kvs[i].1, &[0;1]);
+        }
+
+        self.node_append_range(oldNode, idx + kvs.len() as u16, idx + 1, oldNode.nkeys() - (idx + 1));
     }
 }
 
@@ -443,7 +461,7 @@ mod tests {
         node1.leaf_insert(&node,2,"3".as_bytes(), &[51; 2500]);
        //node1.print();
 
-        let (n1,n2,n3) = node1.nodeSplit3();
+        let (count,n1,n2,n3) = node1.nodeSplit3();
 
         // match n1{
         //     Some(n) => n.print(),

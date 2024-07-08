@@ -9,6 +9,6 @@ pub trait KVContextInterface {
     fn set_root(&mut self,ptr:u64);
     fn save(&mut self);
     fn add(&mut self,node:BNode) -> u64;
-    fn get(&self,key:&u64) ->  Option<BNodeRef>;
-    fn del(&mut self,key:&u64)-> Option<BNode>;
+    fn get(&self,key:u64) ->  Option<BNode>;
+    fn del(&mut self,key:u64)-> Option<BNode>;
 }

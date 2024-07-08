@@ -1,4 +1,5 @@
 use crate::btree::kv::nodeinterface::BNodeReadInterface;
+use crate::btree::kv::nodeinterface::BNodeWriteInterface;
 use crate::btree::kv::contextinterface::KVContextInterface;
 use crate::btree::kv::node::BNode;
 
@@ -29,22 +30,21 @@ impl KVContextInterface for MemoryContext {
         return self.idx; 
     }
 
-    fn get(&self,key:&u64) ->  Option<BNodeRef>
+    fn get(&self,key:u64) -> Option<BNode>
     {
-        let node = self.pages.get(key);
+        let node = self.pages.get(&key);
         match node
         {
             Some(x) => {
-                let s = BNodeRef{data:x.data(),size:x.size()};
-                Some(s)    
+                Some(x.copy())    
             },
             None =>  None,
         }
     }
 
-    fn del(&mut self,key:&u64)-> Option<BNode>
+    fn del(&mut self,key:u64)-> Option<BNode>
     {
-        self.pages.remove(key)
+        self.pages.remove(&key)
     }
 
     fn open(&mut self){
@@ -81,7 +81,7 @@ mod tests {
         let idx = context.add(node);
         println!("Index:{idx}");
 
-        let n1 = context.get(&idx);
+        let n1 = context.get(idx);
         match n1 {
             // The division was valid
             Some(x) =>{
@@ -98,7 +98,7 @@ mod tests {
         node1.copy_value("123456789");
         let idx = context.add(node1);
         println!("Index:{idx}");
-        let n1 = context.get(&idx);
+        let n1 = context.get(idx);
         match n1 {
             // The division was valid
             Some(x) =>{
