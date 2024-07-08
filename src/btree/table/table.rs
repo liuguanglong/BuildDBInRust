@@ -16,6 +16,11 @@ pub struct TableDef{
 
 impl TableDef{
 
+    pub fn new(content:&String) -> Self{
+        let t: TableDef = serde_json::from_str(content).unwrap();
+        return t
+    }
+
     pub fn FixIndexes(&mut self)
     {
         //Add Primary Key To Indexes
@@ -116,5 +121,8 @@ mod tests {
         table.FixIndexes();
         let str = table.Marshal();
         println!("{}", str);
+
+        let t = TableDef::new(&str);
+        println!("{}", t);
     }
 }
