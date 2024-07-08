@@ -1,7 +1,9 @@
 use crate::btree::table::value::Value;
 use crate::btree::table::value::ValueType;
 use std::fmt;
+use serde::{Serialize, Deserialize};
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct TableDef{
     Name:Vec<u8>,
     Types: Vec<ValueType>,
@@ -12,6 +14,25 @@ pub struct TableDef{
     IndexPrefixes: Vec<u32>,
 }
 
+impl TableDef{
+
+    pub fn FixIndexes(&mut self)
+    {
+        //Add Primary Key To Indexes
+        for i in 0..self.Indexes.len()
+        {
+            for j in 0..self.PKeys + 1
+            {
+                self.Indexes[i].push(self.Cols[j as usize].clone());
+            }
+            self.IndexPrefixes.push(self.Prefix as u32 + i as u32  + 1);
+        }
+    }
+
+    pub fn Marshal(&self) ->String{
+        return serde_json::to_string(self).unwrap();
+    }
+}
 impl fmt::Display for TableDef {
 
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -77,5 +98,23 @@ mod tests {
     {
         println!("{}", *TDEF_META);
         println!("{}", *TDEF_TABLE);
+    }
+
+    #[test]
+    fn test_table_marsh()
+    {
+        let mut table = TableDef{
+            Prefix:3,
+            Name: "person".as_bytes().to_vec(),
+            Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
+            Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
+            PKeys : 1,
+            Indexes : vec![vec!["address".as_bytes().to_vec() , "married".as_bytes().to_vec()],vec!["age".as_bytes().to_vec()]],
+            IndexPrefixes : vec![],
+        };
+
+        table.FixIndexes();
+        let str = table.Marshal();
+        println!("{}", str);
     }
 }
