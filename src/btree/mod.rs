@@ -1,7 +1,7 @@
 pub mod btree;
 pub mod kv;
 pub mod util;
-
+pub mod table;
 
 pub const BTREE_PAGE_SIZE:usize = 4096;
 pub const BTREE_MAX_KEY_SIZE :usize= 1000;
