@@ -59,69 +59,79 @@ impl <'a> BTree <'a>{
         self.InsertKV(key, val, mode);
         self.context.save();
     }
-        //Interface for Insert KV
-        pub fn InsertKV(&mut self, key: &[u8], val: &[u8], mode: u16) {
-            assert!(key.len() != 0);
-            assert!(key.len() <= crate::btree::BTREE_MAX_KEY_SIZE);
-            assert!(val.len() <= crate::btree::BTREE_MAX_VALUE_SIZE);
     
-            if self.context.get_root() == 0 {
-                let mut root = BNode::new(crate::btree::BTREE_PAGE_SIZE);
-                root.set_header(crate::btree::BNODE_NODE, 1);
-                root.node_append_kv(0, 0, key, val);
-
-                let newroot = self.context.add(root);
-                self.context.set_root(newroot);
-                return;
-            }
-    
-            let oldRootPtr = self.context.get_root();
-            _ = self.context.del(oldRootPtr);
-            let nodeRoot = self.context.get(oldRootPtr).unwrap();
-    
-            let mut nodeTmp = self.treeInsert(&nodeRoot, key, val, mode);
-            match(nodeTmp)
-            {
-                Some(node) => {
-                    let (count,n1,n2,n3) = node.nodeSplit3();
-                    if(count == 1)
-                    {
-                        let ptr1 = self.context.add(n1.unwrap());
-                        self.context.set_root(ptr1);
-                        return;
-                    }
-                    
-                    let mut root = BNode::new(crate::btree::BTREE_PAGE_SIZE);
-                    root.set_header(crate::btree::BNODE_NODE, count);
-
-                    let ptr1 = self.context.add(n1.unwrap());
-                    let node1 = self.context.get(ptr1).unwrap();
-                    let node1key = node1.get_key(0);
-                    root.node_append_kv(0, ptr1, node1key, &[0;1]);
-
-                    if n2.is_none() == false
-                    {
-                        let ptr = self.context.add(n2.unwrap());
-                        let node = self.context.get(ptr).unwrap();
-                        let nodekey = node.get_key(0);
-                        root.node_append_kv(1, ptr, nodekey, &[0;1]);
-    
-                    }
-
-                    if n3.is_none() == false
-                    {
-                        let ptr = self.context.add(n3.unwrap());
-                        let node = self.context.get(ptr).unwrap();
-                        let nodekey = node.get_key(0);
-                        root.node_append_kv(2, ptr, nodekey, &[0;1]);    
-                    }
-                    let rootPtr = self.context.add(root);
-                    self.context.set_root(rootPtr);
-                },
-                None => {}
-            }
+    pub fn Get(&self, key:&[u8])  -> Option<Vec<u8>> {
+        let rootNode = self.context.get(self.context.get_root());
+        match rootNode{
+            Some(root) => return self.treeSearch(&root,key),
+            None => return None
         }
+    }
 
+
+    //Interface for Insert KV
+    fn InsertKV(&mut self, key: &[u8], val: &[u8], mode: u16) {
+        assert!(key.len() != 0);
+        assert!(key.len() <= crate::btree::BTREE_MAX_KEY_SIZE);
+        assert!(val.len() <= crate::btree::BTREE_MAX_VALUE_SIZE);
+    
+        if self.context.get_root() == 0 {
+            let mut root = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+            root.set_header(crate::btree::BNODE_LEAF, 2);
+            root.node_append_kv(0, 0, &[0;1], &[0;1]);
+            root.node_append_kv(1, 0, key, val);
+
+            let newroot = self.context.add(root);
+            self.context.set_root(newroot);
+            return;
+        }
+    
+        let oldRootPtr = self.context.get_root();
+        let nodeRoot = self.context.get(oldRootPtr).unwrap();
+    
+        let mut nodeTmp = self.treeInsert(&nodeRoot, key, val, mode);
+        match(nodeTmp)
+        {
+            Some(node) => {
+            let (count,n1,n2,n3) = node.nodeSplit3();
+            if(count == 1)
+            {
+                    let ptr1 = self.context.add(n1.unwrap());
+                    self.context.set_root(ptr1);
+                    return;
+            }
+                
+                let mut root = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+                root.set_header(crate::btree::BNODE_NODE, count);
+
+                let ptr1 = self.context.add(n1.unwrap());
+                let node1 = self.context.get(ptr1).unwrap();
+                let node1key = node1.get_key(0);
+                root.node_append_kv(0, ptr1, node1key, &[0;1]);
+
+                if n2.is_none() == false
+                {
+                    let ptr = self.context.add(n2.unwrap());
+                    let node = self.context.get(ptr).unwrap();
+                    let nodekey = node.get_key(0);
+                    root.node_append_kv(1, ptr, nodekey, &[0;1]);
+
+                }
+
+                if n3.is_none() == false
+                {
+                    let ptr = self.context.add(n3.unwrap());
+                    let node = self.context.get(ptr).unwrap();
+                    let nodekey = node.get_key(0);
+                    root.node_append_kv(2, ptr, nodekey, &[0;1]);    
+                }
+                let rootPtr = self.context.add(root);
+                self.context.set_root(rootPtr);
+            },
+            None => {}
+        }
+            _ = self.context.del(oldRootPtr);
+    }
         
     // Search a key from the tree
     pub fn treeSearch<T:BNodeReadInterface>(&self, treenode: &T, key: &[u8]) -> Option<Vec<u8>> {
@@ -153,139 +163,139 @@ impl <'a> BTree <'a>{
         }
     }
 
-        // delete a key from the tree
-        pub fn treeDelete<T:BNodeReadInterface>(&mut self, treenode: &T, key: &[u8]) -> Option<BNode> {
-            // where to find the key?
-            let idx = treenode.nodeLookupLE(key);
-            // act depending on the node type
-            match treenode.btype() {
-                crate::btree::BNODE_LEAF => {
-                    // leaf, node.getKey(idx) <= key
-                    let comp = crate::btree::util::compare_arrays(key, treenode.get_key(idx));
-                    if comp == 0 {
-                        // delete the key in the leaf
-                        //std.debug.print("Node Delete! {d}", .{idx});
-                        //treenode.print();
-                        let mut node = BNode::new(crate::btree::BTREE_PAGE_SIZE);
-                        node.leaf_delete(treenode, idx);
-                        //updatedNode.print();
-                        return Some(node);
-                    } else {
-                        // not found
-                        return None;
-                    }
-                },
-                crate::btree::BNODE_NODE => {
-                    // internal node, insert it to a kid node.
-                    return self.nodeDelete(treenode, idx, key);
-                },
-                other => {
-                    panic!("Exception Insert Node!\n");
-                },
-            }
-        }
-
-        pub fn shouldMerge<T:BNodeReadInterface>(&self, treenode: &T, idx: u16, updated: &BNode)-> (i16,Option<u64>) {
-            if updated.nbytes() > crate::btree::BTREE_PAGE_SIZE / 4 {
-                return (0, None);
-            }
-    
-            if  idx > 0 {
-                let sibling = self.context.get(treenode.get_ptr(idx as usize - 1));
-                match sibling{
-                    Some(n) => {
-                        let merged:usize = n.nbytes() as usize + updated.nbytes() as usize - crate::btree::HEADER as usize;
-                        if merged <= crate::btree::BTREE_PAGE_SIZE {
-                            return (-1, Some(treenode.get_ptr(idx as usize - 1)));
-                        }        
-                    },
-                    None => panic!("Get Node Exception idx: {:?}", idx - 1)
+    // delete a key from the tree
+    pub fn treeDelete<T:BNodeReadInterface>(&mut self, treenode: &T, key: &[u8]) -> Option<BNode> {
+        // where to find the key?
+        let idx = treenode.nodeLookupLE(key);
+        // act depending on the node type
+        match treenode.btype() {
+            crate::btree::BNODE_LEAF => {
+                // leaf, node.getKey(idx) <= key
+                let comp = crate::btree::util::compare_arrays(key, treenode.get_key(idx));
+                if comp == 0 {
+                    // delete the key in the leaf
+                    //std.debug.print("Node Delete! {d}", .{idx});
+                    //treenode.print();
+                    let mut node = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+                    node.leaf_delete(treenode, idx);
+                    //updatedNode.print();
+                    return Some(node);
+                } else {
+                    // not found
+                    return None;
                 }
+            },
+            crate::btree::BNODE_NODE => {
+                // internal node, insert it to a kid node.
+                return self.nodeDelete(treenode, idx, key);
+            },
+            other => {
+                panic!("Exception Insert Node!\n");
+            },
+        }
+    }
 
+    pub fn shouldMerge<T:BNodeReadInterface>(&self, treenode: &T, idx: u16, updated: &BNode)-> (i16,Option<u64>) {
+        if updated.nbytes() > crate::btree::BTREE_PAGE_SIZE / 4 {
+            return (0, None);
+        }
+
+        if  idx > 0 {
+            let sibling = self.context.get(treenode.get_ptr(idx as usize - 1));
+            match sibling{
+                Some(n) => {
+                    let merged:usize = n.nbytes() as usize + updated.nbytes() as usize - crate::btree::HEADER as usize;
+                    if merged <= crate::btree::BTREE_PAGE_SIZE {
+                        return (-1, Some(treenode.get_ptr(idx as usize - 1)));
+                    }        
+                },
+                None => panic!("Get Node Exception idx: {:?}", idx - 1)
             }
-            if  idx + 1 < treenode.nkeys() {
-                let sibling = self.context.get(treenode.get_ptr(idx as usize + 1));
-                match sibling{
+
+        }
+        if  idx + 1 < treenode.nkeys() {
+            let sibling = self.context.get(treenode.get_ptr(idx as usize + 1));
+            match sibling{
+                Some(n) => {
+                    let merged:usize = n.nbytes() as usize + updated.nbytes() as usize - crate::btree::HEADER as usize;
+                    if merged <= crate::btree::BTREE_PAGE_SIZE {
+                        return (1, Some(treenode.get_ptr(idx as usize + 1)));
+                    }        
+                },
+                None => panic!("Get Node Exception idx: {:?}", idx - 1)
+            }
+        }
+
+        return (0,None);
+    }
+
+    pub fn nodeDelete<T:BNodeReadInterface>(&mut self, treenode:&T, idx: u16, key: &[u8]) -> Option<BNode> {
+        // recurse into the kid
+        let kptr = treenode.get_ptr(idx as usize);
+        let realnode = self.context.get(kptr);
+        if realnode.is_none()
+        {
+            panic!("Node is not found! idx:{:?} Key:{:?}", idx, key);
+        }
+
+        let updated = self.treeDelete(&realnode.unwrap(), key).unwrap();
+        //nodeTmp.print();
+        _ = self.context.del(kptr);
+
+        let mut newNode = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+        // check for merging
+        let (flagMerged,sibling) = self.shouldMerge(treenode, idx, &updated);
+        match flagMerged {
+            0 => {
+                assert!(updated.nkeys() > 0);
+                let ptr = self.context.add(updated);
+
+                let updatedNode = self.context.get(ptr).unwrap();
+                let key = updatedNode.get_key(0);
+                let nodes = vec![(ptr,key.to_vec())]; 
+                newNode.nodeReplaceKidN(treenode, idx,nodes);
+            },
+            -1 => { //left
+                //print!("Merge Left.\n");
+                let mut merged = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+                let nodeMerged = self.context.get(sibling.unwrap());
+                match nodeMerged
+                {
                     Some(n) => {
-                        let merged:usize = n.nbytes() as usize + updated.nbytes() as usize - crate::btree::HEADER as usize;
-                        if merged <= crate::btree::BTREE_PAGE_SIZE {
-                            return (1, Some(treenode.get_ptr(idx as usize + 1)));
-                        }        
+                        merged.nodeMerge(&n, &updated);
+                        let prtMerged = self.context.add(merged);
+                        _ = self.context.del(treenode.get_ptr(idx as usize - 1));
+
+                        let nodeMerged = self.context.get(prtMerged).unwrap();
+                        newNode.nodeReplace2Kid(treenode, idx - 1, prtMerged, nodeMerged.get_key(0));
                     },
-                    None => panic!("Get Node Exception idx: {:?}", idx - 1)
+                    None => panic!("Get Node Exception idx: {:?}", sibling)
                 }
-            }
-    
-            return (0,None);
+            },
+            1 => { //right
+                //std.debug.print("Merge Right.\n", .{});
+                let mut merged = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+                let nodeMerged = self.context.get(sibling.unwrap());
+                match nodeMerged
+                {
+                    Some(n) => {
+                        merged.nodeMerge( &updated,&n);
+                        let prtMerged = self.context.add(merged);
+                        _ = self.context.del(treenode.get_ptr(idx as usize + 1));
+
+                        let nodeMerged = self.context.get(prtMerged).unwrap();
+                        newNode.nodeReplace2Kid(treenode, idx, prtMerged, nodeMerged.get_key(0));
+                    },
+                    None => panic!("Get Node Exception idx: {:?}", sibling)
+                }
+            },
+            other => {
+                panic!("Exception Merge Flag!");
+            },
         }
 
-        pub fn nodeDelete<T:BNodeReadInterface>(&mut self, treenode:&T, idx: u16, key: &[u8]) -> Option<BNode> {
-            // recurse into the kid
-            let kptr = treenode.get_ptr(idx as usize);
-            let realnode = self.context.get(kptr);
-            if realnode.is_none()
-            {
-                panic!("Node is not found! idx:{:?} Key:{:?}", idx, key);
-            }
-    
-            let updated = self.treeDelete(&realnode.unwrap(), key).unwrap();
-            //nodeTmp.print();
-            _ = self.context.del(kptr);
-    
-            let mut newNode = BNode::new(crate::btree::BTREE_PAGE_SIZE);
-            // check for merging
-            let (flagMerged,sibling) = self.shouldMerge(treenode, idx, &updated);
-            match flagMerged {
-                0 => {
-                    assert!(updated.nkeys() > 0);
-                    let ptr = self.context.add(updated);
-
-                    let updatedNode = self.context.get(ptr).unwrap();
-                    let key = updatedNode.get_key(0);
-                    let nodes = vec![(ptr,key.to_vec())]; 
-                    newNode.nodeReplaceKidN(treenode, idx,nodes);
-                },
-                -1 => { //left
-                    //print!("Merge Left.\n");
-                    let mut merged = BNode::new(crate::btree::BTREE_PAGE_SIZE);
-                    let nodeMerged = self.context.get(sibling.unwrap());
-                    match nodeMerged
-                    {
-                        Some(n) => {
-                            merged.nodeMerge(&n, &updated);
-                            let prtMerged = self.context.add(merged);
-                            _ = self.context.del(treenode.get_ptr(idx as usize - 1));
-
-                            let nodeMerged = self.context.get(prtMerged).unwrap();
-                            newNode.nodeReplace2Kid(treenode, idx - 1, prtMerged, nodeMerged.get_key(0));
-                        },
-                        None => panic!("Get Node Exception idx: {:?}", sibling)
-                    }
-                },
-                1 => { //right
-                    //std.debug.print("Merge Right.\n", .{});
-                    let mut merged = BNode::new(crate::btree::BTREE_PAGE_SIZE);
-                    let nodeMerged = self.context.get(sibling.unwrap());
-                    match nodeMerged
-                    {
-                        Some(n) => {
-                            merged.nodeMerge( &updated,&n);
-                            let prtMerged = self.context.add(merged);
-                            _ = self.context.del(treenode.get_ptr(idx as usize + 1));
-
-                            let nodeMerged = self.context.get(prtMerged).unwrap();
-                            newNode.nodeReplace2Kid(treenode, idx, prtMerged, nodeMerged.get_key(0));
-                        },
-                        None => panic!("Get Node Exception idx: {:?}", sibling)
-                    }
-                },
-                other => {
-                    panic!("Exception Merge Flag!");
-                },
-            }
-    
-            return Some(newNode);
-        }
+        return Some(newNode);
+    }
     
     // insert a KV into a node, the result might be split into 2 nodes.
     // the caller is responsible for deallocating the input node
@@ -293,7 +303,7 @@ impl <'a> BTree <'a>{
     pub fn treeInsert<T:BNodeReadInterface>(&mut self, oldNode:&T, key:&[u8], val:&[u8], mode: u16) -> Option<BNode> {
         // where to insert the key?
         let idx = oldNode.nodeLookupLE(key);
-        //std.debug.print("Find  Key:{s} Index:{d}", .{ key, idx });
+        //println!("Find  Key:{:?} Index:{:?}", key, idx );
         // act depending on the node type
         let mut newNode = BNode::new(2 * crate::btree::BTREE_PAGE_SIZE);
         match oldNode.btype() {
@@ -379,8 +389,30 @@ impl <'a> BTree <'a>{
 }
 
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    #[test]
+    fn test_btree_memorycontext()
+    {
 
+        let mut context = crate::btree::kv::memorycontext::MemoryContext::new();
+        let mut tree = BTree::new(&mut context);
 
+        tree.Set("2".as_bytes(), &[32;2500], crate::btree::MODE_UPSERT);
+        tree.Set("1".as_bytes(), &[31;2500], crate::btree::MODE_UPSERT);
+        tree.Set("hello".as_bytes(), "rust".as_bytes(), crate::btree::MODE_UPSERT);
+        tree.Set("4".as_bytes(), &[34;2500], crate::btree::MODE_UPSERT);
+        tree.Set("3".as_bytes(), &[33;2500], crate::btree::MODE_UPSERT);
+
+        let v = tree.Get("hello".as_bytes());
+        match(v)
+        {
+            Some(s) => println!("{0}",String::from_utf8(s).unwrap()),
+            None=> {}
+        }
+    }
+}
 
 

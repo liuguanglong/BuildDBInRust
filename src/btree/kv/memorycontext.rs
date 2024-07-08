@@ -6,16 +6,16 @@ use crate::btree::kv::node::BNode;
 use std::collections::HashMap;
 use crate::btree::kv::noderef::BNodeRef;
 
-struct MemoryContext{
+pub struct MemoryContext{
     idx:u64,
     root: u64,
     pages:HashMap<u64, BNode>,
 }
 
 impl MemoryContext{
-    fn new() -> Self{
+    pub fn new() -> Self{
         MemoryContext{
-            idx:0,
+            idx:1,
             root:0,
             pages:HashMap::new(),
         }
