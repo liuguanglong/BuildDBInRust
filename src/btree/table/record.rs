@@ -33,7 +33,7 @@ impl<'a> Record<'a> {
         let mut vals = Vec::with_capacity(def.Cols.len());
         for i in 0..def.Cols.len()
         {
-            vals.push(Value::INT8(0));
+            vals.push(Value::None);
         }
         Record{
             Vals : vals,
@@ -71,6 +71,55 @@ impl<'a> Record<'a> {
             },
             None=>{ return None;}
         }
+    }
+
+    // check primaykey
+    pub fn checkPrimaryKey(&self) -> bool {
+
+        for i in 0..self.def.PKeys as usize + 1
+        {
+            if let Value::None = self.Vals[i]
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // check Indexes
+    pub fn checkIndexes(&self)->bool {
+
+        for i in 0..self.def.Indexes.len()
+        {
+            for j in 0..self.def.Indexes[i].len()
+            {
+                let idx = self.GetColumnIndex(&self.def.Indexes[i][j]);
+                match  idx {
+                    Some(col) => {
+                        if let Value::None = self.Vals[col]
+                        {
+                            return false;
+                        }
+                        return true;
+                    },
+                    _Other=>{return false;}
+                }
+            }
+        }
+        return true;
+    }
+
+     // check record
+     pub fn checkVals(&self) -> bool {
+
+        for i in 0..self.def.PKeys as usize + 1
+        {
+            if let Value::None = self.Vals[i]
+            {
+                return false;
+            }           
+        }
+        return true;
     }
 
     fn GetColumnIndex(&self, key: &[u8])-> Option<usize> {
@@ -165,6 +214,10 @@ impl<'a> Record<'a> {
                 //list.extend_from_slice(v);
                 list.push(0);
             },
+            Value::None =>
+            {
+
+            }
         }
     }
 
