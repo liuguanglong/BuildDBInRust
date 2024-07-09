@@ -7,7 +7,7 @@ use crate::btree::BTreeError;
 use crate::btree::kv::contextinterface::KVContextInterface;
 use crate::btree::kv::node::BNode;
 use crate::btree::kv::nodeinterface::BNodeReadInterface;
-use crate::btree::kv::nodeinterface::BNodeWriteInterface;
+use crate::btree::btreeinterface::BTreeKVInterface;
 
 pub struct BIter<'a>{
     context: &'a dyn KVContextInterface,    

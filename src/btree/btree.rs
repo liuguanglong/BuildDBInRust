@@ -3,6 +3,7 @@ use crate::btree::kv::nodeinterface::BNodeReadInterface;
 use crate::btree::kv::nodeinterface::BNodeWriteInterface;
 use crate::btree::kv::nodeinterface::BNodeOperationInterface;
 use crate::btree::scan::scaninterface::ScanInterface;
+use crate::btree::btreeinterface::BTreeKVInterface;
 
 use crate::btree::kv::node::BNode;
 use crate::btree::scan::biter::BIter;
@@ -62,6 +63,31 @@ impl<'a> ScanInterface for BTree<'a>
     }
 }
 
+impl<'a> BTreeKVInterface for BTree<'a>{
+    fn Set(&mut self,key: &[u8], val: &[u8], mode: u16) {
+        self.InsertKV(key, val, mode);
+        self.context.save();
+    }
+    
+    fn Get(&self, key:&[u8])  -> Option<Vec<u8>> {
+        let rootNode = self.context.get(self.context.get_root());
+        match rootNode{
+            Some(root) => return self.treeSearch(&root,key),
+            None => return None
+        }
+    }
+
+    fn Delete(&mut self, key: &[u8]) -> bool {
+        let ret = self.DeleteKV(key);
+        if ret == true {
+            self.context.save();
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+}
 impl <'a> BTree <'a>{
     pub fn new(context:&'a mut dyn KVContextInterface) -> Self {
         BTree {
@@ -85,7 +111,7 @@ impl <'a> BTree <'a>{
         }
         println!();
     }
-
+    
     fn printNode<T:BNodeReadInterface>(&self, treenode: &T) {
         if treenode.btype() == crate::btree::BNODE_LEAF {
             treenode.print();
@@ -108,28 +134,7 @@ impl <'a> BTree <'a>{
         }
     }
 
-    pub fn Set(&mut self,key: &[u8], val: &[u8], mode: u16) {
-        self.InsertKV(key, val, mode);
-        self.context.save();
-    }
-    
-    pub fn Get(&self, key:&[u8])  -> Option<Vec<u8>> {
-        let rootNode = self.context.get(self.context.get_root());
-        match rootNode{
-            Some(root) => return self.treeSearch(&root,key),
-            None => return None
-        }
-    }
 
-    pub fn Delete(&mut self, key: &[u8]) -> bool {
-        let ret = self.DeleteKV(key);
-        if ret == true {
-            self.context.save();
-            return true;
-        } else {
-            return false;
-        }
-    }
 
      //Interface for Delete KV
      fn DeleteKV(&mut self, key: &[u8]) -> bool {

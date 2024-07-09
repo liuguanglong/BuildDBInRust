@@ -3,6 +3,8 @@ pub mod kv;
 pub mod util;
 pub mod table;
 pub mod scan;
+pub mod btreeinterface;
+pub mod request;
 
 use std::fmt;
 
