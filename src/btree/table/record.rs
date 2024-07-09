@@ -2,6 +2,8 @@ use crate::btree::table::table::TableDef;
 use crate::btree::table::value::Value;
 use crate::btree::table::value::ValueType;
 use std::fmt;
+use std::error::Error;
+use crate::btree::BTreeError;
 
 //Record Table Row
 pub struct Record<'a>{
@@ -39,16 +41,26 @@ impl<'a> Record<'a> {
         }
     }
 
-    pub fn Set(&mut self, key: &[u8], val: Value){
+    pub fn Set(&mut self, key: &[u8], val: Value) -> Result<(),BTreeError>{
         let idx = self.GetColumnIndex(key);
         match idx 
         {
             Some(i) => {
-                self.Vals[i] = val;
+                if val.MatchValueType(&self.def.Types[i]) == true
+                {
+                    self.Vals[i] = val;
+                    Ok(())
+                }
+                else {
+                    Err(BTreeError::ValueTypeWrong(std::str::from_utf8(key).unwrap().to_string()))                    
+                }
             },
-            None=>{}
+            None=>{ 
+                Err(BTreeError::ColumnNotFound(std::str::from_utf8(key).unwrap().to_string()))
+            }
         }
     }
+
 
     pub fn Get(&self, key: &[u8])-> Option<Value> {
         let idx = self.GetColumnIndex(key);
@@ -224,11 +236,11 @@ mod tests {
         table.FixIndexes();
 
         let mut rc = Record::new(&table);
-        rc.Set("id".as_bytes(), Value::BYTES("20".as_bytes().to_vec()));
-        rc.Set("name".as_bytes(), Value::BYTES("John Water".as_bytes().to_vec()));
-        rc.Set("address".as_bytes(), Value::BYTES("Pointe-Claire".as_bytes().to_vec()));
-        rc.Set("age".as_bytes(), Value::INT16(20));
-        rc.Set("married".as_bytes(), Value::BOOL(false));
+        rc.Set("id".as_bytes(), Value::BYTES("20".as_bytes().to_vec())).unwrap();
+        rc.Set("name".as_bytes(), Value::BYTES("John Water".as_bytes().to_vec())).unwrap();
+        rc.Set("address".as_bytes(), Value::BYTES("Pointe-Claire".as_bytes().to_vec())).unwrap();
+        rc.Set("age".as_bytes(), Value::INT16(20)).unwrap();
+        rc.Set("married".as_bytes(), Value::BOOL(false)).unwrap();
 
         let ret = rc.Get("name".as_bytes());
         match  ret {

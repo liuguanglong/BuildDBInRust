@@ -34,6 +34,75 @@ pub enum Value{
     BOOL(bool),
 }
 
+impl Value{
+    pub fn MatchValueType(&self,t:&ValueType) -> bool
+    {
+        match self {
+            Value::BOOL(_) =>
+            {
+                if let ValueType::BOOL = t
+                {
+                    return true;
+                }
+                else {
+                    
+                    return false;
+                }
+            } ,
+            Value::INT8 (_) =>  {
+                if let ValueType::INT8 = t
+                {
+                    return true;
+                }
+                else {
+                    
+                    return false;
+                }
+            } ,
+            Value::INT16 (_) => {
+                if let ValueType::INT16 = t
+                {
+                    return true;
+                }
+                else {
+                    
+                    return false;
+                }
+            } ,
+            Value::INT32 (_) =>  {
+                if let ValueType::INT32 = t
+                {
+                    return true;
+                }
+                else {
+                    
+                    return false;
+                }
+            } ,
+            Value::INT64 (_) =>  {
+                if let ValueType::INT64 = t
+                {
+                    return true;
+                }
+                else {
+                    
+                    return false;
+                }
+            } ,
+            Value::BYTES (_) =>  {
+                if let ValueType::BYTES = t
+                {
+                    return true;
+                }
+                else {
+                    
+                    return false;
+                }
+            } ,
+        }
+    }
+
+}
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
