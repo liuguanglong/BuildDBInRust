@@ -15,3 +15,5 @@ pub const HEADER:u16 = 4;
 pub const MODE_UPSERT: u16 = 0; // insert or replac
 pub const MODE_UPDATE_ONLY: u16 = 1; // update existing keys
 pub const MODE_INSERT_ONLY: u16 = 2; // only add new keys
+
+pub const TABLE_PREFIX_MIN: u16 = 4;

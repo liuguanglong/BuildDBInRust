@@ -5,13 +5,13 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TableDef{
-    Name:Vec<u8>,
-    Types: Vec<ValueType>,
-    Cols: Vec<Vec<u8>>,
-    PKeys: u16,
-    Prefix: u32,
-    Indexes: Vec<Vec<Vec<u8>>>,
-    IndexPrefixes: Vec<u32>,
+    pub Name:Vec<u8>,
+    pub Types: Vec<ValueType>,
+    pub Cols: Vec<Vec<u8>>,
+    pub PKeys: u16,
+    pub Prefix: u32,
+    pub Indexes: Vec<Vec<Vec<u8>>>,
+    pub IndexPrefixes: Vec<u32>,
 }
 
 impl TableDef{

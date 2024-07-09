@@ -24,7 +24,7 @@ impl fmt::Display for ValueType {
     }
 }
 
-
+#[derive(Clone, Debug)]
 pub enum Value{
     BYTES(Vec<u8>),
     INT64(i64),
