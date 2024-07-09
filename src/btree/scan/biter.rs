@@ -134,3 +134,81 @@ impl<'a> BIter<'a> {
     }
 
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::btree::{btree::BTree, scan::{comp::OP_CMP, scaninterface::ScanInterface}};
+
+    #[test]
+    fn test_btree_memorycontext()
+    {
+
+        let mut context = crate::btree::kv::memorycontext::MemoryContext::new();
+        let mut tree = BTree::new(&mut context);
+
+        tree.Set("3".as_bytes(), "33333".as_bytes(), crate::btree::MODE_UPSERT);
+        tree.Set("1".as_bytes(), "11111".as_bytes(), crate::btree::MODE_UPSERT);
+        tree.Set("7".as_bytes(), "77777".as_bytes(), crate::btree::MODE_UPSERT);
+        tree.Set("5".as_bytes(), "55555".as_bytes(), crate::btree::MODE_UPSERT);
+
+        let it = tree.Seek("3".as_bytes(), OP_CMP::CMP_LT);
+        let ret = it.Deref();
+        println!("\nLess Then => Key:{} Value:{} \n", String::from_utf8(ret.0.to_vec()).unwrap(), String::from_utf8(ret.1.to_vec()).unwrap());
+    
+        let it2 = tree.Seek("3".as_bytes(), OP_CMP::CMP_LE);
+        let ret2 = it2.Deref();
+        println!("Less and Equal => Key:{} Value:{} \n", String::from_utf8(ret2.0.to_vec()).unwrap(), String::from_utf8(ret2.1.to_vec()).unwrap());
+
+        let it3 = tree.Seek("3".as_bytes(), OP_CMP::CMP_GT);
+        let ret3 = it3.Deref();
+        println!("Large Than => Key:{} Value:{} \n", String::from_utf8(ret3.0.to_vec()).unwrap(), String::from_utf8(ret3.1.to_vec()).unwrap());
+
+        let it4 = tree.Seek("3".as_bytes(), OP_CMP::CMP_GE);
+        let ret4 = it4.Deref();
+        println!("Large and Equal => Key:{} Value:{} \n", String::from_utf8(ret4.0.to_vec()).unwrap(), String::from_utf8(ret4.1.to_vec()).unwrap());
+
+
+        //Test SeekLE
+        let mut itLe = tree.SeekLE("3".as_bytes());
+
+        let mut retLe = itLe.Deref();
+        println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+
+        if itLe.Prev() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+    
+        if itLe.Prev() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+
+        if itLe.Prev() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+
+        if itLe.Next() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+        if itLe.Next() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+        if itLe.Next() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+        if itLe.Next() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+        if itLe.Next() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+    }
+}
