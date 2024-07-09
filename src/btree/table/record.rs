@@ -17,7 +17,7 @@ impl<'a> fmt::Display for Record<'a> {
         {
             write!(f,"{}|", String::from_utf8(self.def.Cols[i].to_vec()).unwrap());
         } 
-        
+        write!(f,"\n");
         for i in 0..self.def.Cols.len()
         {
             write!(f,"{}|", self.Vals[i]);
@@ -93,6 +93,46 @@ impl<'a> Record<'a> {
         }
     }
 
+    // order-preserving encoding
+    fn encodeKeys(&self, list:&mut Vec<u8>) {
+
+        for i in 0..self.def.PKeys as usize +1
+        {
+            self.encodeVal(i,list);            
+        }
+    }
+
+    // for primary keys
+    pub fn deencodeKey(&mut self, val: &[u8]) {
+        let prefix = self.def.Prefix.to_le_bytes();
+        assert!(prefix[0..prefix.len()] == val[0..prefix.len()]);
+
+        let mut pos: usize = prefix.len() as usize;
+        let mut idx: usize = 0;
+        while idx <= self.def.PKeys as usize {
+            pos = self.decodeVal(val, idx, pos);
+            idx += 1;
+        }
+    }
+
+    // for primary keys
+    pub fn encodeKey(&self, prefix: u32, list:&mut Vec<u8>){
+        list.extend_from_slice(&prefix.to_le_bytes());
+        self.encodeKeys(list);
+    }
+
+    // order-preserving encoding
+    pub fn encodeIndex(&self, prefix: u32, index: usize, list: &mut Vec<u8>) {
+
+        let pValue: i32 = prefix as i32;
+        list.extend_from_slice(&pValue.to_le_bytes());
+
+        for i in 0..self.def.Indexes[index].len()
+        {
+            self.encodeVal(i, list);
+        }
+    }
+
     fn encodeVal(&self, idx: usize, list:&mut Vec<u8>) {
 
         match &self.Vals[idx]
@@ -148,17 +188,17 @@ impl<'a> Record<'a> {
                 {
                     end += 1;
                 }   
-
+               
+                let ret = crate::btree::util::deescapeString(val[pos..end].try_into().unwrap());
                 match &mut self.Vals[idx]
                 {
                     Value::BYTES(v) =>
                     {
-                        let ret = crate::btree::util::deescapeString(val[pos..end].try_into().unwrap());
                         v.clear();
-                        v.extend_from_slice(&ret);                        
                     },
                     Other => {}
                 }
+                self.Vals[idx] = Value::BYTES(ret);                        
                 return end + 1;
             },
         }
@@ -177,10 +217,11 @@ mod tests {
             Name: "person".as_bytes().to_vec(),
             Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
             Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
-            PKeys : 0,
+            PKeys : 1,
             Indexes : vec![vec!["address".as_bytes().to_vec() , "married".as_bytes().to_vec()],vec!["age".as_bytes().to_vec()]],
             IndexPrefixes : vec![],
         };
+        table.FixIndexes();
 
         let mut rc = Record::new(&table);
         rc.Set("id".as_bytes(), Value::BYTES("20".as_bytes().to_vec()));
@@ -198,10 +239,14 @@ mod tests {
         let mut list:Vec<u8> = Vec::new();
         rc.encodeValues(&mut list);
 
-        println!("Vals Result:{:?} \n", list);
+        let mut listKey:Vec<u8> = Vec::new();
+        rc.encodeKey(table.Prefix,&mut listKey);
+
+        println!("Keys:{:?} Vals:{:?} \n",listKey, list);
 
         let mut rc1 = Record::new(&table);
         rc1.decodeValues(&list);
+        rc1.deencodeKey(&listKey);
 
         println!("After Decode:{}",rc1);
 
