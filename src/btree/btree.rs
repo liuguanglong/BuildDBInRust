@@ -2,11 +2,64 @@ use crate::btree::kv::contextinterface::KVContextInterface;
 use crate::btree::kv::nodeinterface::BNodeReadInterface;
 use crate::btree::kv::nodeinterface::BNodeWriteInterface;
 use crate::btree::kv::nodeinterface::BNodeOperationInterface;
+use crate::btree::scan::scaninterface::ScanInterface;
 
 use crate::btree::kv::node::BNode;
+use crate::btree::scan::biter::BIter;
+use crate::btree::scan::comp::OP_CMP;
 
 pub struct BTree<'a> {
     context: &'a mut dyn KVContextInterface,    
+}
+
+impl<'a> ScanInterface for BTree<'a>
+{
+    fn SeekLE(&self, key:&[u8]) -> BIter
+    {
+        let mut iter = BIter::new(self.context);
+
+        let mut ptr = self.context.get_root();
+        let mut n = self.context.get(ptr).unwrap();
+        let mut idx: usize = 0;
+        while (ptr != 0) {
+            n = self.context.get(ptr).unwrap();
+            idx = n.nodeLookupLE(key) as usize;
+
+            if n.btype() == crate::btree::BNODE_NODE {
+                ptr = n.get_ptr(idx);
+            } else {
+                ptr = 0;
+            }
+
+            iter.path.push(n);
+            iter.pos.push(idx);
+        }
+        iter.valid = true;
+        return iter;
+    }
+
+    fn Seek(&self, key:&[u8], cmp:OP_CMP) -> BIter
+    {
+        let mut iter = self.SeekLE(key);
+        if iter.Valid() {
+            if let OP_CMP::CMP_LE = cmp  
+            {
+                return iter;
+            }
+
+            let cur = iter.Deref();
+            if crate::btree::scan::comp::cmpOK(cur.0, key, &cmp) == false {
+                //off by one
+                if cmp.value() > 0 {
+                    _ = iter.Next();
+                } else {
+                    _ = iter.Prev();
+                }
+                return iter;
+            }
+        }
+        return iter;
+    }
 }
 
 impl <'a> BTree <'a>{

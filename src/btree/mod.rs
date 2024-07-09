@@ -2,6 +2,8 @@ pub mod btree;
 pub mod kv;
 pub mod util;
 pub mod table;
+pub mod scan;
+
 use std::fmt;
 
 pub const BTREE_PAGE_SIZE:usize = 4096;
@@ -23,6 +25,8 @@ pub const TABLE_PREFIX_MIN: u16 = 4;
 pub enum BTreeError{
     ColumnNotFound(String),    
     ValueTypeWrong(String),
+    PrevNotFound, 
+    NextNotFound
 }
 
 // 实现 fmt::Display 特征
@@ -31,6 +35,8 @@ impl fmt::Display for BTreeError {
         match self {
             BTreeError::ColumnNotFound(err) => write!(f, "Column is not found! :{}", err),
             BTreeError::ValueTypeWrong(err) => write!(f, "Value's type is wrong!: {}", err),
+            BTreeError::PrevNotFound  => write!(f, "Prev value notFound"), 
+            BTreeError::NextNotFound  => write!(f, "Next value notFound"),
         }
     }
 }
