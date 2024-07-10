@@ -178,6 +178,7 @@ impl<'a> Record<'a> {
     // for primary keys
     pub fn deencodeKey(&mut self, val: &[u8]) {
         let prefix = self.def.Prefix.to_le_bytes();
+
         assert!(prefix[0..prefix.len()] == val[0..prefix.len()]);
 
         let mut pos: usize = prefix.len() as usize;

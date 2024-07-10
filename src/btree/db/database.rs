@@ -111,7 +111,10 @@ impl<'a> DataBase<'a>{
         key2.encodeKey(key2.def.Prefix, &mut keyEnd);
 
         let iter = self.btree.Seek(&keyStart, cmp1);
-
+        if iter.Valid() == false
+        {
+            return Err(BTreeError::NextNotFound);
+        }
         Ok(
             Scanner::new(cmp1,cmp2,keyStart,keyEnd,iter)
         )
@@ -295,14 +298,44 @@ mod tests {
         if let Some(tdef) = ret
         {
             println!("Table define:{}",tdef);
+            let mut r = Record::new(&tdef);
+
+            for i in 0..100 {
+                r.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
+                r.Set( "name".as_bytes(), Value::BYTES(format!("Bob{}", i).as_bytes().to_vec()));
+                r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+                r.Set("age".as_bytes(), Value::INT16(20));
+                r.Set("married".as_bytes(), Value::BOOL(false));
+
+                //dbinstance.Insert(&mut r);
+            }
+    
+            let mut key1 = Record::new(&tdef);
+            let mut key2 = Record::new(&tdef);
+            key1.Set("id".as_bytes(), Value::BYTES("2".as_bytes().to_vec()));
+            key2.Set("id".as_bytes(), Value::BYTES("5".as_bytes().to_vec()));
+            let mut scanner = dbinstance.Seek(OP_CMP::CMP_GE, OP_CMP::CMP_LE, &key1, &key2);
+    
+            let mut r3 = Record::new(&tdef);
+            match &mut scanner {
+                Ok(cursor) =>{
+                    while cursor.Valid(){
+                            cursor.Deref(&mut r3);
+                            println!("{}", r3);
+                            cursor.Next();
+                        }                
+                },
+                Err(err) => { println!("Error when add table:{}",err)}
+                
+            }
+    
         }
 
-        let ret = dbinstance.AddTable(&mut table);
-        if let Err(ret) = ret
-        {
-            println!("Error when add table:{}",ret);
-        }
-
+        // let ret = dbinstance.AddTable(&mut table);
+        // if let Err(ret) = ret
+        // {
+        //     println!("Error when add table:{}",ret);
+        // }
 
 
     }

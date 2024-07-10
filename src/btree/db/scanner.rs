@@ -23,6 +23,10 @@ impl<'a> Scanner<'a> {
     }
 
     pub fn Valid(&self)-> bool {
+            if self.iter.Valid() == false
+            {
+                return false;
+            }
             let (key,_) = self.iter.Deref();
             return crate::btree::scan::comp::cmpOK(key, &self.keyEnd, &self.Cmp2);
     }
