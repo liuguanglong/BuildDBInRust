@@ -9,6 +9,6 @@ pub trait BTreeKVInterface {
 
 
 pub trait BTreeInterface {
-    fn SetEx(&mut self,req:&InsertReqest);
-    fn DeleteEx(&mut self, req: &DeleteRequest) -> bool;
+    fn SetEx(&mut self,req:&mut InsertReqest);
+    fn DeleteEx(&mut self, req: &mut DeleteRequest) -> bool;
 }
