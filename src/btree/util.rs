@@ -45,7 +45,7 @@ pub fn deescapeString(content: &[u8]) -> Vec<u8> {
         }
     }
     list.push(content[idx]);
-    println!("decoded:{}",String::from_utf8(list.to_vec()).unwrap());
+    //println!("decoded:{}",String::from_utf8(list.to_vec()).unwrap());
     return list;
 }
 
