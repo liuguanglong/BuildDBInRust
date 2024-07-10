@@ -1,3 +1,6 @@
+
+
+#[derive(Clone,Debug,Copy)]
 pub enum OP_CMP {
     CMP_GE,
     CMP_GT,

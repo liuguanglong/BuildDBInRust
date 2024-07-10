@@ -1,6 +1,7 @@
 
 
 use crate::btree::scan::comp::OP_CMP;
+use crate::btree::scan::scaninterface::ScanInterface;
 use crate::btree::table::record::Record;
 use crate::btree::table::table::TableDef;
 use crate::btree::table::value::Value;
@@ -10,6 +11,8 @@ use crate::btree::kv::contextinterface::KVContextInterface;
 use crate::btree::btree::btreeinterface::BTreeKVInterface;
 use crate::btree::btree::btree::BTree;
 use std::collections::HashMap;
+
+use super::scanner::Scanner;
 
 lazy_static! {
     static ref TDEF_META: TableDef = TableDef{
@@ -81,6 +84,40 @@ impl<'a> DataBase<'a>{
     //     try scanner1.Seek(self.kv);
     //     return scanner1;
     // }
+
+    pub fn Seek(&self,cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<Scanner,BTreeError> {
+        
+        // sanity checks
+        if cmp1.value() > 0 && cmp2.value() < 0 
+        {} 
+        else if cmp2.value() > 0 && cmp1.value() < 0 
+        {} 
+        else {
+            return Err(BTreeError::BadArrange);
+        }
+
+        let bCheck1 = key1.checkPrimaryKey();
+        if  bCheck1 == false {
+            return Err(BTreeError::KeyError);
+        }
+        let bCheck2 = key2.checkPrimaryKey();
+        if  bCheck2 == false {
+            return Err(BTreeError::KeyError);
+        }
+
+        let mut keyStart: Vec<u8> = Vec::new();
+        let mut keyEnd: Vec<u8> = Vec::new();
+        key1.encodeKey(key1.def.Prefix, &mut keyStart);
+        key2.encodeKey(key2.def.Prefix, &mut keyEnd);
+
+        let iter = self.btree.Seek(&keyStart, cmp1);
+
+        Ok(
+            Scanner::new(cmp1,cmp2,keyStart,keyEnd,iter)
+        )
+    }
+
+
 
     //add a record
     fn Set(&mut self, rec:&mut Record, mode: u16)->Result<(),BTreeError> {

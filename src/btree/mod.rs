@@ -32,6 +32,8 @@ pub enum BTreeError{
     TableAlreadyExist,
     ColumnValueMissing,
     TableNotFind,
+    BadArrange,
+    KeyError,
 
 }
 
@@ -47,6 +49,8 @@ impl fmt::Display for BTreeError {
             BTreeError::TableAlreadyExist  => write!(f, "Table already exists!"),
             BTreeError::ColumnValueMissing  => write!(f, "Column's Value is null!"),
             BTreeError::TableNotFind  => write!(f, "Table is not found!"),
+            BTreeError::BadArrange  => write!(f, "The seek range is wrong!"),
+            BTreeError::KeyError  => write!(f, "The seek key is not given!"),
         }
     }
 }
