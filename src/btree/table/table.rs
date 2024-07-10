@@ -3,7 +3,7 @@ use crate::btree::table::value::ValueType;
 use std::fmt;
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize,Clone,Deserialize, Debug)]
 pub struct TableDef{
     pub Name:Vec<u8>,
     pub Types: Vec<ValueType>,
@@ -71,39 +71,17 @@ impl fmt::Display for TableDef {
 
 }
 
-lazy_static! {
-    static ref TDEF_META: TableDef = TableDef{
-        Prefix:1,
-        Name: "@meta".as_bytes().to_vec(),
-        Types : vec![ValueType::BYTES, ValueType::BYTES] ,
-        Cols : vec!["key".as_bytes().to_vec() , "val".as_bytes().to_vec() ] ,
-        PKeys : 0,
-        Indexes : vec![],
-        IndexPrefixes : vec![],
-    };
-
-    static ref TDEF_TABLE: TableDef = TableDef{
-        Prefix:2,
-        Name: "@table".as_bytes().to_vec(),
-        Types : vec![ValueType::BYTES, ValueType::BYTES] ,
-        Cols : vec!["name".as_bytes().to_vec() , "def".as_bytes().to_vec() ] ,
-        PKeys : 0,
-        Indexes : vec![],
-        IndexPrefixes : vec![],
-    };
-}
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_format()
-    {
-        println!("{}", *TDEF_META);
-        println!("{}", *TDEF_TABLE);
-    }
+    // #[test]
+    // fn test_format()
+    // {
+    //     println!("{}", *TDEF_META);
+    //     println!("{}", *TDEF_TABLE);
+    // }
 
     #[test]
     fn test_table_marsh()

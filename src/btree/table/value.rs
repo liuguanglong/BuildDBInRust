@@ -1,7 +1,7 @@
 use std::fmt;
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize,Clone,Deserialize, Debug)]
 pub enum ValueType {
     BYTES,
     INT64,

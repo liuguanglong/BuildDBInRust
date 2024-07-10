@@ -1,5 +1,5 @@
-use crate::btree::request::DeleteRequest;
-use crate::btree::request::InsertReqest;
+use crate::btree::btree::request::DeleteRequest;
+use crate::btree::btree::request::InsertReqest;
 
 pub trait BTreeKVInterface {
     fn Set(&mut self,key: &[u8], val: &[u8], mode: u16);

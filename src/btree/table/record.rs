@@ -7,8 +7,8 @@ use crate::btree::BTreeError;
 
 //Record Table Row
 pub struct Record<'a>{
-    Vals: Vec<Value>,
-    def: &'a TableDef,
+    pub Vals: Vec<Value>,
+    pub def: &'a TableDef,
 }
 
 impl<'a> fmt::Display for Record<'a> {
@@ -77,6 +77,18 @@ impl<'a> Record<'a> {
     pub fn checkPrimaryKey(&self) -> bool {
 
         for i in 0..self.def.PKeys as usize + 1
+        {
+            if let Value::None = self.Vals[i]
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // check record
+    pub fn checkRecord(&self) -> bool {
+        for i in self.def.PKeys as usize + 1..self.def.Cols.len()
         {
             if let Value::None = self.Vals[i]
             {

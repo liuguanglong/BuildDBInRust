@@ -3,10 +3,10 @@ use crate::btree::kv::nodeinterface::BNodeReadInterface;
 use crate::btree::kv::nodeinterface::BNodeWriteInterface;
 use crate::btree::kv::nodeinterface::BNodeOperationInterface;
 use crate::btree::scan::scaninterface::ScanInterface;
-use crate::btree::btreeinterface::BTreeKVInterface;
-use crate::btree::btreeinterface::BTreeInterface;
-use crate::btree::request::DeleteRequest;
-use crate::btree::request::InsertReqest;
+use crate::btree::btree::btreeinterface::BTreeKVInterface;
+use crate::btree::btree::btreeinterface::BTreeInterface;
+use crate::btree::btree::request::DeleteRequest;
+use crate::btree::btree::request::InsertReqest;
 
 
 use crate::btree::kv::node::BNode;

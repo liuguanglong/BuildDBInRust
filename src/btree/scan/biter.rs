@@ -7,7 +7,7 @@ use crate::btree::BTreeError;
 use crate::btree::kv::contextinterface::KVContextInterface;
 use crate::btree::kv::node::BNode;
 use crate::btree::kv::nodeinterface::BNodeReadInterface;
-use crate::btree::btreeinterface::BTreeKVInterface;
+use crate::btree::btree::btreeinterface::BTreeKVInterface;
 
 pub struct BIter<'a>{
     context: &'a dyn KVContextInterface,    
@@ -138,7 +138,8 @@ impl<'a> BIter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::btree::{btree::BTree, scan::{comp::OP_CMP, scaninterface::ScanInterface}};
+    use crate::btree::btree::btree::BTree;
+    use crate::btree::scan::{comp::OP_CMP, scaninterface::ScanInterface};
 
     #[test]
     fn test_btree_memorycontext()

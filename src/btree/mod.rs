@@ -3,8 +3,7 @@ pub mod kv;
 pub mod util;
 pub mod table;
 pub mod scan;
-pub mod btreeinterface;
-pub mod request;
+pub mod db;
 
 use std::fmt;
 
@@ -21,14 +20,19 @@ pub const MODE_UPSERT: u16 = 0; // insert or replac
 pub const MODE_UPDATE_ONLY: u16 = 1; // update existing keys
 pub const MODE_INSERT_ONLY: u16 = 2; // only add new keys
 
-pub const TABLE_PREFIX_MIN: u16 = 4;
+pub const TABLE_PREFIX_MIN: u32 = 4;
 
 #[derive(Debug)]
 pub enum BTreeError{
     ColumnNotFound(String),    
     ValueTypeWrong(String),
     PrevNotFound, 
-    NextNotFound
+    NextNotFound,
+    PrimaryKeyIsNotSet,
+    TableAlreadyExist,
+    ColumnValueMissing,
+    TableNotFind,
+
 }
 
 // 实现 fmt::Display 特征
@@ -39,6 +43,10 @@ impl fmt::Display for BTreeError {
             BTreeError::ValueTypeWrong(err) => write!(f, "Value's type is wrong!: {}", err),
             BTreeError::PrevNotFound  => write!(f, "Prev value notFound"), 
             BTreeError::NextNotFound  => write!(f, "Next value notFound"),
+            BTreeError::PrimaryKeyIsNotSet  => write!(f, "Primary key's value is null!"), 
+            BTreeError::TableAlreadyExist  => write!(f, "Table already exists!"),
+            BTreeError::ColumnValueMissing  => write!(f, "Column's Value is null!"),
+            BTreeError::TableNotFind  => write!(f, "Table is not found!"),
         }
     }
 }
