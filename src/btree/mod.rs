@@ -34,6 +34,8 @@ pub enum BTreeError{
     TableNotFind,
     BadArrange,
     KeyError,
+    IndexesValueMissing,
+    NoIndexFound
 
 }
 
@@ -51,6 +53,8 @@ impl fmt::Display for BTreeError {
             BTreeError::TableNotFind  => write!(f, "Table is not found!"),
             BTreeError::BadArrange  => write!(f, "The seek range is wrong!"),
             BTreeError::KeyError  => write!(f, "The seek key is not given!"),
+            BTreeError::IndexesValueMissing => write!(f,"The value of Index is not found!"),
+            BTreeError::NoIndexFound => write!(f,"No index is found!"),
         }
     }
 }

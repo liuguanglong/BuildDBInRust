@@ -1,5 +1,8 @@
 
 
+use crate::btree::btree::btreeinterface::BTreeInterface;
+use crate::btree::btree::request::DeleteRequest;
+use crate::btree::btree::request::InsertReqest;
 use crate::btree::scan::comp::OP_CMP;
 use crate::btree::scan::scaninterface::ScanInterface;
 use crate::btree::table::record::Record;
@@ -10,9 +13,12 @@ use crate::btree::BTreeError;
 use crate::btree::kv::contextinterface::KVContextInterface;
 use crate::btree::btree::btreeinterface::BTreeKVInterface;
 use crate::btree::btree::btree::BTree;
+use crate::btree::MODE_UPSERT;
 use std::collections::HashMap;
 
 use super::scanner::Scanner;
+use super::INDEX_ADD;
+use super::INDEX_DEL;
 
 lazy_static! {
     static ref TDEF_META: TableDef = TableDef{
@@ -79,11 +85,19 @@ impl<'a> DataBase<'a>{
         return self.dbGet(rec);
     }
 
-    // pub fn Seek(&mut self, key1: &Record, cmp1: OP_CMP, key2: &Record, cmp2: OP_CMP)->Scanner {
-    //     var scanner1 = try scanner.Scanner.createScanner(self.allocator, cmp1, cmp2, key1, key2);
-    //     try scanner1.Seek(self.kv);
-    //     return scanner1;
-    // }
+    // delete a record by its primary key
+    pub fn Delete(&mut self, rec:&Record)->Result<bool,BTreeError> {
+        
+        let bCheck = rec.checkPrimaryKey();
+        if (bCheck == false) {
+            return Err(BTreeError::PrimaryKeyIsNotSet);
+        }
+
+        let mut key = Vec::new();
+        rec.encodeKey(rec.def.Prefix, &mut key);
+
+        return Ok(self.btree.Delete(&key));
+    }
 
     pub fn Seek(&self,cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<Scanner,BTreeError> {
         
@@ -170,6 +184,81 @@ impl<'a> DataBase<'a>{
 
         self.btree.Set(&key, &v, mode);
         return Ok(());
+    }
+
+    fn dbUpdateEx(&mut self, rec:&mut Record, mode: u16) -> Result<(),BTreeError> {
+
+        let mut bCheck = rec.checkRecord();
+        if bCheck == false {
+            return Err(BTreeError::ColumnValueMissing);
+        }
+
+        bCheck = rec.checkPrimaryKey();
+        if bCheck == false {
+            return Err(BTreeError::PrimaryKeyIsNotSet);
+        }
+
+        bCheck = rec.checkIndexes();
+        if bCheck == false {
+            return Err(BTreeError::IndexesValueMissing);
+        }
+
+        let mut key:Vec<u8> = Vec::new();
+        rec.encodeKey(rec.def.Prefix, &mut key);
+
+        let mut v:Vec<u8> = Vec::new();
+        rec.encodeValues(&mut v);
+
+        let mut request = InsertReqest::new(&key,&v,mode);
+        self.btree.SetEx(&mut request);
+
+        if (rec.def.Indexes.len() == 0) || (request.Updated == false) {
+            return Ok(());
+        }
+
+        if (request.Updated == true && request.Added == false) {
+
+            let mut old = Record::new(&rec.def);
+            old.deencodeKey(&key);
+            old.decodeValues(&request.OldValue);
+
+            self.indexOp(&mut old, INDEX_DEL);
+        }
+
+        if request.Updated {
+            let mut old = Record::new(&rec.def);
+            old.deencodeKey(&key);
+
+            self.indexOp(&mut old, INDEX_ADD);
+        }
+
+        return Ok(());
+    }
+
+
+    pub fn indexOp(& mut self, rec: &mut Record, op: u16) -> Result<(),BTreeError> {
+
+        for i in 0..rec.def.Indexes.len(){
+
+            let mut index = Vec::new();
+            rec.encodeIndex(rec.def.IndexPrefixes[i], i, &mut index);
+            println!("Index :{}\n  Vals Result:{:?} ", i, index);
+
+            if op == INDEX_ADD {
+                let mut request = InsertReqest::new( &index ,&[0;1], MODE_UPSERT);
+                self.btree.SetEx(&mut request);
+            } 
+            else if op == INDEX_DEL 
+            {
+                let mut reqDelete = DeleteRequest::new(&index);
+                self.btree.DeleteEx(&mut reqDelete);
+            } 
+            else {
+                panic!("bad op value!");
+            }
+        }
+
+        Ok(())
     }
 
     //add Table
