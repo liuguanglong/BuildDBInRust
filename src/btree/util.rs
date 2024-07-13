@@ -19,10 +19,17 @@ pub fn compare_arrays(a: &[u8], b: &[u8]) ->i32 {
     return 0;
 }
 
+//Todo oxfe
 pub fn deescapeString(content: &[u8]) -> Vec<u8> {
     let mut list:Vec<u8> = Vec::new();
     //println!("Before dedescapString: {}", content);
     let mut idx: usize = 0;
+
+    if content[idx] == 0xfe
+    {
+        idx +=1 ;
+    }
+
     while (idx < content.len() - 1) {
         if content[idx] == 1 {
             if content[idx + 1] == 1 {
@@ -52,8 +59,22 @@ pub fn deescapeString(content: &[u8]) -> Vec<u8> {
 
 // Strings are encoded as nul terminated strings,
 // escape the nul byte so that strings contain no nul byte.
+
+// "\xff" represents the highest order in key comparisons,
+// also escape the first byte if it's 0xff.
+
+//The first byte of a string is escaped by the "\xfe" byte if it’s "\xff" or "\xfe". Thus all
+//string encodings are lower than "\xff"
 pub fn escapeString(content: &[u8], list:&mut Vec<u8>) {
     let mut idx: usize = 0;
+
+    if (content.len() > 0) && (content[0] >= 0xfe)
+    {
+        list.push(0xfe);
+        list.push(content[0]);
+        idx = 1;
+    }
+
     while idx < content.len() 
     {
         if content[idx] <= 1 

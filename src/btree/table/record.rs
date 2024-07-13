@@ -212,6 +212,41 @@ impl<'a> Record<'a> {
         }
     }
 
+    // The range key can be a prefix of the index key,
+    // we may have to encode missing columns to make the comparison work.
+    pub fn encodeKeyPartial(&self,idx:usize) ->Vec<u8>
+    {
+        let mut list = Vec::new();
+        list.extend_from_slice(&self.def.IndexPrefixes[idx].to_le_bytes());
+        for x in &self.def.Indexes[idx]
+        {
+            if let Some(i) = self.GetColumnIndex(&x)
+            {
+                if let Value::None = self.Vals[i]
+                {
+                    match &self.def.Types[i]
+                    {
+                        ValueType::BOOL => {list.extend(&[0;1])},
+                        ValueType::INT8 => {list.extend(&[0xff])},
+                        ValueType::INT16 => {list.extend(&[0xff;2])},
+                        ValueType::INT32 => {list.extend(&[0xff;4])},
+                        ValueType::INT64 => {list.extend(&[0xff;8])},
+                        ValueType::BYTES => { list.push(0xff)},
+                        Other=> {panic!()}
+                    }
+                }
+                else {
+                    self.encodeVal(i,&mut list);                 
+                }
+            }
+            else {
+                panic!("Column in indexes is not found!")
+            }
+        }
+
+        list
+    }
+
     fn encodeVal(&self, idx: usize, list:&mut Vec<u8>) {
 
         match &self.Vals[idx]
