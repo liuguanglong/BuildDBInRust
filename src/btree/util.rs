@@ -26,10 +26,10 @@ pub fn deescapeString(content: &[u8]) -> Vec<u8> {
     let mut idx: usize = 0;
 
 
-    if content[idx] == 0xfe
-    {
-        idx +=1 ;
-    }
+    // if content[idx] == 0xfe
+    // {
+    //     idx +=1 ;
+    // }
 
     while (idx < content.len() - 1) {
         if content[idx] == 1 {
@@ -69,12 +69,12 @@ pub fn deescapeString(content: &[u8]) -> Vec<u8> {
 pub fn escapeString(content: &[u8], list:&mut Vec<u8>) {
     let mut idx: usize = 0;
 
-    if (content.len() > 0) && (content[0] >= 0xfe)
-    {
-        list.push(0xfe);
-        list.push(content[0]);
-        idx = 1;
-    }
+    // if (content.len() > 0) && (content[0] >= 0xfe)
+    // {
+    //     list.push(0xfe);
+    //     list.push(content[0]);
+    //     idx = 1;
+    // }
 
     while idx < content.len() 
     {

@@ -35,7 +35,8 @@ pub enum BTreeError{
     BadArrange,
     KeyError,
     IndexesValueMissing,
-    NoIndexFound
+    NoIndexFound,
+    RecordNotFound
 
 }
 
@@ -55,6 +56,7 @@ impl fmt::Display for BTreeError {
             BTreeError::KeyError  => write!(f, "The seek key is not given!"),
             BTreeError::IndexesValueMissing => write!(f,"The value of Index is not found!"),
             BTreeError::NoIndexFound => write!(f,"No index is found!"),
+            BTreeError::RecordNotFound => write!(f,"Record is found!"),
         }
     }
 }

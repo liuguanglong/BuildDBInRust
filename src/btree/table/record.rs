@@ -208,15 +208,15 @@ impl<'a> Record<'a> {
 
         for i in 0..self.def.Indexes[index].len()
         {
-            self.encodeVal(i, list);
+            let idx = self.GetColumnIndex(&self.def.Indexes[index][i]);
+            self.encodeVal(idx.unwrap(), list);
         }
     }
 
     // The range key can be a prefix of the index key,
     // we may have to encode missing columns to make the comparison work.
-    pub fn encodeKeyPartial(&self,idx:usize) ->Vec<u8>
+    pub fn encodeKeyPartial(&self,idx:usize, list: &mut Vec<u8>) 
     {
-        let mut list = Vec::new();
         list.extend_from_slice(&self.def.IndexPrefixes[idx].to_le_bytes());
         for x in &self.def.Indexes[idx]
         {
@@ -236,15 +236,13 @@ impl<'a> Record<'a> {
                     }
                 }
                 else {
-                    self.encodeVal(i,&mut list);                 
+                    self.encodeVal(i,list);                 
                 }
             }
             else {
                 panic!("Column in indexes is not found!")
             }
         }
-
-        list
     }
 
     pub fn decodeKeyPartrial(&mut self,idxIndexes:usize,list:&[u8])
@@ -459,7 +457,8 @@ mod tests {
         rc.Set("name".as_bytes(), Value::BYTES("Bob".as_bytes().to_vec())).unwrap();
         rc.Set("age".as_bytes(), Value::INT16(30)).unwrap();
 
-        let key = rc.encodeKeyPartial(1);
+        let mut key = Vec::new();
+        rc.encodeKeyPartial(1,&mut key);
         println!("{:?}",key);
 
         let mut rc = Record::new(&table);

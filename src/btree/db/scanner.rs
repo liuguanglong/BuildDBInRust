@@ -1,5 +1,7 @@
 use crate::btree::{btree::btree::BTree, scan::{biter::BIter, comp::OP_CMP, scaninterface::ScanInterface}, table::{record::Record, table::TableDef}, BTreeError};
 
+use super::database::{self, DataBase};
+
 
 pub struct Scanner<'a>{
      // the range, from Key1 to Key2
@@ -33,7 +35,7 @@ impl<'a> Scanner<'a> {
             return crate::btree::scan::comp::cmpOK(key, &self.keyEnd, &self.Cmp2);
     }
 
-    pub fn Deref(&self, rec: &mut Record) {
+    pub fn Deref(&self,db:&DataBase, rec: &mut Record)-> Result<(),BTreeError> {
             let (key,val) = self.iter.Deref();
             if self.indexNo < 0
             {
@@ -41,16 +43,27 @@ impl<'a> Scanner<'a> {
                     rec.deencodeKey(key);
                     rec.decodeValues(&val.to_vec());
                 }
-    
+                return Ok(());
             }
             else {
                 // secondary index
                 // The "value" part of the KV store is not used by indexes
-                assert!(val.len() == 0);
+                assert!(val.len() == 1);
                 // decode the primary key first
-                rec.decodeKeyPartrial(self.indexNo as usize, &key)
-
-
+                rec.decodeKeyPartrial(self.indexNo as usize, &key);
+                let ret = db.dbGet(rec);
+                if let Ok(v) = ret
+                {
+                    if v == true
+                    {
+                        return Ok(());
+                    }
+                    else
+                    {
+                        return Err(BTreeError::RecordNotFound);
+                    }
+                }
+                return Err(BTreeError::RecordNotFound);
             }
     }
 

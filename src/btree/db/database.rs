@@ -99,7 +99,7 @@ impl<'a> DataBase<'a>{
         return Ok(self.btree.Delete(&key));
     }
 
-    pub fn Seek(&self,cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<Scanner,BTreeError> {
+    pub fn Seek(&self,idxNumber:i16, cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<Scanner,BTreeError> {
         
         // sanity checks
         if cmp1.value() > 0 && cmp2.value() < 0 
@@ -110,19 +110,28 @@ impl<'a> DataBase<'a>{
             return Err(BTreeError::BadArrange);
         }
 
-        let bCheck1 = key1.checkPrimaryKey();
-        if  bCheck1 == false {
-            return Err(BTreeError::KeyError);
-        }
-        let bCheck2 = key2.checkPrimaryKey();
-        if  bCheck2 == false {
-            return Err(BTreeError::KeyError);
-        }
-
         let mut keyStart: Vec<u8> = Vec::new();
         let mut keyEnd: Vec<u8> = Vec::new();
-        key1.encodeKey(key1.def.Prefix, &mut keyStart);
-        key2.encodeKey(key2.def.Prefix, &mut keyEnd);
+
+        if idxNumber == -1
+        {
+            let bCheck1 = key1.checkPrimaryKey();
+            if  bCheck1 == false {
+                return Err(BTreeError::KeyError);
+            }
+            let bCheck2 = key2.checkPrimaryKey();
+            if  bCheck2 == false {
+                return Err(BTreeError::KeyError);
+            }
+    
+            key1.encodeKey(key1.def.Prefix, &mut keyStart);
+            key2.encodeKey(key2.def.Prefix, &mut keyEnd);
+        }
+        else {
+            key1.encodeKeyPartial(idxNumber as usize,&mut keyStart,);
+            key2.encodeKeyPartial(idxNumber as usize,&mut keyEnd);
+            println!("KeyStart:{:?}  KeyEnd:{:?}",keyStart,keyEnd);
+        }
 
         let iter = self.btree.Seek(&keyStart, cmp1);
         if iter.Valid() == false
@@ -130,7 +139,7 @@ impl<'a> DataBase<'a>{
             return Err(BTreeError::NextNotFound);
         }
         Ok(
-            Scanner::new(-1,cmp1,cmp2,keyStart,keyEnd,iter)
+            Scanner::new(idxNumber,cmp1,cmp2,keyStart,keyEnd,iter)
         )
     }
 
@@ -219,17 +228,16 @@ impl<'a> DataBase<'a>{
         if (request.Updated == true && request.Added == false) {
 
             let mut old = Record::new(&rec.def);
-            old.deencodeKey(&key);
             old.decodeValues(&request.OldValue);
-
+            old.deencodeKey(&key);
             self.indexOp(&mut old, INDEX_DEL);
         }
 
         if request.Updated {
             let mut old = Record::new(&rec.def);
-            old.deencodeKey(&key);
-
-            self.indexOp(&mut old, INDEX_ADD);
+            // old.decodeValues(&key);
+            // old.deencodeKey(&key);
+            self.indexOp(rec, INDEX_ADD);
         }
 
         return Ok(());
@@ -242,8 +250,8 @@ impl<'a> DataBase<'a>{
 
             let mut index = Vec::new();
             rec.encodeIndex(rec.def.IndexPrefixes[i], i, &mut index);
-            println!("Index :{}\n  Vals Result:{:?} ", i, index);
-
+            //println!("Rec:{}",rec);
+            //println!("Index :{}\n  Vals Result:{:?} ", i, index);
             if op == INDEX_ADD {
                 let mut request = InsertReqest::new( &index ,&[0;1], MODE_UPSERT);
                 self.btree.SetEx(&mut request);
@@ -384,6 +392,75 @@ mod tests {
         }
 
         let ret = dbinstance.getTableDef("person".as_bytes());
+        if let Some(tdef1) = ret
+        {
+            //println!("Table define:{}",tdef);
+            let mut r = Record::new(&tdef1);
+
+            for i in 0..100 {
+                r.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
+                r.Set( "name".as_bytes(), Value::BYTES(format!("Bob{}", i).as_bytes().to_vec()));
+                r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+                r.Set("age".as_bytes(), Value::INT16(20));
+                r.Set("married".as_bytes(), Value::BOOL(false));
+
+                dbinstance.Insert(&mut r);
+            }
+    
+            let mut key1 = Record::new(&tdef1);
+            let mut key2 = Record::new(&tdef1);
+            key1.Set("id".as_bytes(), Value::BYTES("2".as_bytes().to_vec()));
+            key2.Set("id".as_bytes(), Value::BYTES("5".as_bytes().to_vec()));
+            let mut scanner = dbinstance.Seek(-1,OP_CMP::CMP_GE, OP_CMP::CMP_LE, &key1, &key2);
+    
+            let mut r3 = Record::new(&tdef1);
+            match &mut scanner {
+                Ok(cursor) =>{
+                    while cursor.Valid(){
+                            cursor.Deref(&dbinstance,&mut r3);
+                            println!("{}", r3);
+                            cursor.Next();
+                        }                
+                },
+                Err(err) => { println!("Error Get Cursor:{}",err)}
+                
+            }
+    
+        }
+
+        // let ret = dbinstance.AddTable(&mut table);
+        // if let Err(ret) = ret
+        // {
+        //     println!("Error when add table:{}",ret);
+        // }
+
+
+    }
+    
+    #[test]
+    fn test_database_byIndexes()
+    {
+        let mut context = crate::btree::kv::memorycontext::MemoryContext::new();
+        let mut dbinstance = DataBase::new(&mut context);
+
+        let mut table = TableDef{
+            Prefix:0,
+            Name: "person".as_bytes().to_vec(),
+            Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
+            Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
+            PKeys : 0,
+            Indexes : vec![vec!["address".as_bytes().to_vec() , "married".as_bytes().to_vec()],vec!["name".as_bytes().to_vec()]],
+            IndexPrefixes : vec![],
+        };
+        //table.FixIndexes();
+
+        let ret = dbinstance.AddTable(&mut table);
+        if let Err(ret) = ret
+        {
+            println!("Error when add table:{}",ret);
+        }
+
+        let ret = dbinstance.getTableDef("person".as_bytes());
         if let Some(tdef) = ret
         {
             println!("Table define:{}",tdef);
@@ -396,20 +473,20 @@ mod tests {
                 r.Set("age".as_bytes(), Value::INT16(20));
                 r.Set("married".as_bytes(), Value::BOOL(false));
 
-                //dbinstance.Insert(&mut r);
+                dbinstance.dbUpdateEx(&mut r,crate::btree::MODE_UPSERT);
             }
     
             let mut key1 = Record::new(&tdef);
             let mut key2 = Record::new(&tdef);
-            key1.Set("id".as_bytes(), Value::BYTES("2".as_bytes().to_vec()));
-            key2.Set("id".as_bytes(), Value::BYTES("5".as_bytes().to_vec()));
-            let mut scanner = dbinstance.Seek(OP_CMP::CMP_GE, OP_CMP::CMP_LE, &key1, &key2);
+            key1.Set("name".as_bytes(), Value::BYTES("Bob1".as_bytes().to_vec()));
+            key2.Set("name".as_bytes(), Value::BYTES("Bob5".as_bytes().to_vec()));
+            let mut scanner = dbinstance.Seek(1,OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
     
             let mut r3 = Record::new(&tdef);
             match &mut scanner {
                 Ok(cursor) =>{
                     while cursor.Valid(){
-                            cursor.Deref(&mut r3);
+                            cursor.Deref(&dbinstance,&mut r3);
                             println!("{}", r3);
                             cursor.Next();
                         }                
@@ -428,5 +505,4 @@ mod tests {
 
 
     }
-    
 }
