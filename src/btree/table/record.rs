@@ -247,6 +247,24 @@ impl<'a> Record<'a> {
         list
     }
 
+    pub fn decodeKeyPartrial(&mut self,idxIndexes:usize,list:&[u8])
+    {
+        let mut pos: usize = 4;
+        let mut idx: usize = 0;
+        while idx < self.def.Indexes[idxIndexes].len() 
+        {
+           
+            if let Some(i) = self.GetColumnIndex(&self.def.Indexes[idxIndexes][idx])
+            {
+                pos = self.decodeVal(list, i, pos);
+                idx += 1;
+            }
+            else {
+                panic!("Column in indexes is not found!")
+            }
+        }
+    }
+
     fn encodeVal(&self, idx: usize, list:&mut Vec<u8>) {
 
         match &self.Vals[idx]
@@ -306,7 +324,6 @@ impl<'a> Record<'a> {
                 {
                     end += 1;
                 }   
-               
                 let ret = crate::btree::util::deescapeString(val[pos..end].try_into().unwrap());
                 match &mut self.Vals[idx]
                 {
@@ -419,6 +436,35 @@ mod tests {
         let ret = rc.findIndexes();
         assert!(ret.is_ok());
         assert!(ret.unwrap() == 1);
+
+    }
+
+    #[test]
+    fn test_encode_decode_keyParital()
+    {
+        let mut table = TableDef{
+            Prefix:3,
+            Name: "person".as_bytes().to_vec(),
+            Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
+            Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
+            PKeys : 0,
+            Indexes : vec![vec!["address".as_bytes().to_vec() , "age".as_bytes().to_vec()],vec!["name".as_bytes().to_vec(),"age".as_bytes().to_vec()]],
+            IndexPrefixes : vec![],
+        };
+        table.FixIndexes();
+        println!("{}",table);
+
+        let mut rc = Record::new(&table);
+        rc.Set("id".as_bytes(), Value::BYTES("20".as_bytes().to_vec())).unwrap();
+        rc.Set("name".as_bytes(), Value::BYTES("Bob".as_bytes().to_vec())).unwrap();
+        rc.Set("age".as_bytes(), Value::INT16(30)).unwrap();
+
+        let key = rc.encodeKeyPartial(1);
+        println!("{:?}",key);
+
+        let mut rc = Record::new(&table);
+        rc.decodeKeyPartrial(1, &key);
+        println!("{}",rc);
 
     }
 }

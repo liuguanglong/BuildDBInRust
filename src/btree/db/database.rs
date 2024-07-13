@@ -130,7 +130,7 @@ impl<'a> DataBase<'a>{
             return Err(BTreeError::NextNotFound);
         }
         Ok(
-            Scanner::new(cmp1,cmp2,keyStart,keyEnd,iter)
+            Scanner::new(-1,cmp1,cmp2,keyStart,keyEnd,iter)
         )
     }
 
@@ -142,7 +142,7 @@ impl<'a> DataBase<'a>{
     }
 
     // get a single row by the primary key
-    fn dbGet(&self,rec:&mut Record)->Result<bool,BTreeError> {
+    pub fn dbGet(&self,rec:&mut Record)->Result<bool,BTreeError> {
         let bCheck = rec.checkPrimaryKey();
         if bCheck == false {
             return Err(BTreeError::PrimaryKeyIsNotSet);

@@ -22,8 +22,9 @@ pub fn compare_arrays(a: &[u8], b: &[u8]) ->i32 {
 //Todo oxfe
 pub fn deescapeString(content: &[u8]) -> Vec<u8> {
     let mut list:Vec<u8> = Vec::new();
-    //println!("Before dedescapString: {}", content);
+    //println!("Before dedescapString: {:?}", content);
     let mut idx: usize = 0;
+
 
     if content[idx] == 0xfe
     {

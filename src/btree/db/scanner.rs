@@ -6,14 +6,16 @@ pub struct Scanner<'a>{
      Cmp1: OP_CMP,
      Cmp2: OP_CMP,
      iter: BIter<'a>,
+     indexNo : i16,
      keyEnd: Vec<u8>,
      keyStart: Vec<u8>,
 }
 
 impl<'a> Scanner<'a> {
     
-    pub fn new(cmp1: OP_CMP, cmp2: OP_CMP,keyStart:Vec<u8>,keyEnd:Vec<u8>,iter:BIter<'a>) -> Self{
+    pub fn new(indexNo:i16,cmp1: OP_CMP, cmp2: OP_CMP,keyStart:Vec<u8>,keyEnd:Vec<u8>,iter:BIter<'a>) -> Self{
         Scanner{
+            indexNo:indexNo,
             Cmp1:cmp1,
             Cmp2:cmp2,
             iter:iter,
@@ -33,9 +35,22 @@ impl<'a> Scanner<'a> {
 
     pub fn Deref(&self, rec: &mut Record) {
             let (key,val) = self.iter.Deref();
-            if (val.len() > 0) {
-                rec.deencodeKey(key);
-                rec.decodeValues(&val.to_vec());
+            if self.indexNo < 0
+            {
+                if (val.len() > 0) {
+                    rec.deencodeKey(key);
+                    rec.decodeValues(&val.to_vec());
+                }
+    
+            }
+            else {
+                // secondary index
+                // The "value" part of the KV store is not used by indexes
+                assert!(val.len() == 0);
+                // decode the primary key first
+                rec.decodeKeyPartrial(self.indexNo as usize, &key)
+
+
             }
     }
 
