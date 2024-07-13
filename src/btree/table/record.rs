@@ -73,6 +73,11 @@ impl<'a> Record<'a> {
         }
     }
 
+    pub fn findIndexes(&self) -> Result<i16,BTreeError>
+    {
+        self.def.findIndexWithRecord(&self.Vals)
+    }
+
     // check primaykey
     pub fn checkPrimaryKey(&self) -> bool {
 
@@ -328,6 +333,57 @@ mod tests {
 
         println!("After Decode:{}",rc1);
 
+
     }
 
+    #[test]
+    fn test_record_find_index()
+    {
+        let mut table = TableDef{
+            Prefix:3,
+            Name: "person".as_bytes().to_vec(),
+            Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
+            Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
+            PKeys : 0,
+            Indexes : vec![vec!["address".as_bytes().to_vec() , "age".as_bytes().to_vec()],vec!["name".as_bytes().to_vec(),"age".as_bytes().to_vec()]],
+            IndexPrefixes : vec![],
+        };
+        table.FixIndexes();
+
+        let mut rc = Record::new(&table);
+        rc.Set("id".as_bytes(), Value::BYTES("20".as_bytes().to_vec())).unwrap();
+
+        let ret = rc.findIndexes();
+        assert!(ret.is_ok());
+        assert!(ret.unwrap() == -1);
+
+        let mut rc = Record::new(&table);
+        rc.Set("address".as_bytes(), Value::BYTES("PC".as_bytes().to_vec())).unwrap();
+
+        let ret = rc.findIndexes();
+        assert!(ret.is_ok());
+        assert!(ret.unwrap() == 0);
+
+        let mut rc = Record::new(&table);
+        rc.Set("age".as_bytes(), Value::INT16(30)).unwrap();
+
+        let ret = rc.findIndexes();
+        assert!(ret.is_err());
+
+        let mut rc = Record::new(&table);
+        rc.Set("name".as_bytes(), Value::BYTES("Bob".as_bytes().to_vec())).unwrap();
+
+        let ret = rc.findIndexes();
+        assert!(ret.is_ok());
+        assert!(ret.unwrap() == 1);
+
+        let mut rc = Record::new(&table);
+        rc.Set("name".as_bytes(), Value::BYTES("Bob".as_bytes().to_vec())).unwrap();
+        rc.Set("age".as_bytes(), Value::INT16(30)).unwrap();
+
+        let ret = rc.findIndexes();
+        assert!(ret.is_ok());
+        assert!(ret.unwrap() == 1);
+
+    }
 }

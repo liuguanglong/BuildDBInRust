@@ -2,6 +2,7 @@ use crate::btree::table::value::Value;
 use crate::btree::table::value::ValueType;
 use crate::btree::BTreeError;
 use std::fmt;
+use std::str::FromStr;
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize,Clone,Deserialize, Debug)]
@@ -39,7 +40,23 @@ impl TableDef{
         return serde_json::to_string(self).unwrap();
     }
 
-    pub fn findIndex(&self,keys:&Vec<Vec<u8>>) -> Result<i16,BTreeError>
+    pub fn findIndexWithRecord(&self,vals:&Vec<Value>)-> Result<i16,BTreeError>
+    {
+        let mut keys: Vec<&Vec<u8>> = Vec::new();
+        for i in 0..self.Cols.len()
+        {
+            if let Value::None = vals[i] 
+            {
+            }
+            else {
+                keys.push(&self.Cols[i]);
+            }
+        }
+
+        self.findIndex(&keys)
+    }
+
+    pub fn findIndex(&self,keys:&Vec<&Vec<u8>>) -> Result<i16,BTreeError>
     {
         let pk = &self.Cols[0..self.PKeys as usize+1];
         if Self::isPrefix(pk,keys)
@@ -68,7 +85,7 @@ impl TableDef{
         
     }
 
-    fn isPrefix(long:&[Vec<u8>], short:&Vec<Vec<u8>>)->bool{
+    fn isPrefix(long:&[Vec<u8>], short:&Vec<&Vec<u8>>)->bool{
         if long.len() < short.len()
         {
             return false;
@@ -76,7 +93,7 @@ impl TableDef{
 
         for i in 0..short.len(){
             let ret = crate::btree::util::compare_arrays(&long[i],&short[i]);
-            if ret == 0{
+            if ret != 0{
                 return false;
             }
         }
@@ -150,4 +167,5 @@ mod tests {
         let t = TableDef::new(&str);
         println!("{}", t);
     }
+
 }
