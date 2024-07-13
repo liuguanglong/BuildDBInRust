@@ -99,6 +99,17 @@ impl<'a> DataBase<'a>{
         return Ok(self.btree.Delete(&key));
     }
 
+    pub fn Scan(&self, cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<Scanner,BTreeError> 
+    {
+        if let Ok(indexNo) = key1.findIndexes()
+        {
+            return self.Seek(indexNo, cmp1, cmp2, key1, key2);
+        }
+        else {            
+            return Err(BTreeError::IndexNotFoundError);
+        }
+    }
+
     pub fn Seek(&self,idxNumber:i16, cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<Scanner,BTreeError> {
         
         // sanity checks
@@ -521,7 +532,8 @@ mod tests {
             let mut key2 = Record::new(&tdef);
             key1.Set("name".as_bytes(), Value::BYTES("Bob1".as_bytes().to_vec()));
             key2.Set("name".as_bytes(), Value::BYTES("Bob5".as_bytes().to_vec()));
-            let mut scanner = dbinstance.Seek(1,OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
+            //let mut scanner = dbinstance.Seek(1,OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
+            let mut scanner = dbinstance.Scan(OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
     
             let mut r3 = Record::new(&tdef);
             match &mut scanner {
@@ -534,8 +546,7 @@ mod tests {
                 },
                 Err(err) => { println!("Error when add table:{}",err)}
                 
-            }
-    
+            }    
         }
 
         // let ret = dbinstance.AddTable(&mut table);
