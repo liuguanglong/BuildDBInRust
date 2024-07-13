@@ -195,7 +195,7 @@ impl<'a> DataBase<'a>{
         return Ok(());
     }
 
-    fn dbUpdateEx(&mut self, rec:&mut Record, mode: u16) -> Result<(),BTreeError> {
+    pub fn UpdateEx(&mut self, rec:&mut Record, mode: u16) -> Result<(),BTreeError> {
 
         let mut bCheck = rec.checkRecord();
         if bCheck == false {
@@ -243,6 +243,35 @@ impl<'a> DataBase<'a>{
         return Ok(());
     }
 
+    pub fn DeleteEx(&mut self, rec:&Record)->Result<bool,BTreeError> {
+        
+        let bCheck = rec.checkPrimaryKey();
+        if (bCheck == false) {
+            return Err(BTreeError::PrimaryKeyIsNotSet);
+        }
+
+        let mut key = Vec::new();
+        rec.encodeKey(rec.def.Prefix, &mut key);
+
+        let mut request = DeleteRequest::new(&key);
+        let ret = self.btree.DeleteEx(&mut request);
+        if ret == false 
+        {
+            return Ok(false);
+        }
+
+        if rec.def.Indexes.len() == 0  {
+            return Ok(true);
+        }
+
+        let mut old = Record::new(&rec.def);
+        old.decodeValues(&request.OldValue);
+        old.deencodeKey(&key);
+        self.indexOp(&mut old, INDEX_DEL);
+
+        return Ok(true);
+
+    }
 
     pub fn indexOp(& mut self, rec: &mut Record, op: u16) -> Result<(),BTreeError> {
 
@@ -473,9 +502,21 @@ mod tests {
                 r.Set("age".as_bytes(), Value::INT16(20));
                 r.Set("married".as_bytes(), Value::BOOL(false));
 
-                dbinstance.dbUpdateEx(&mut r,crate::btree::MODE_UPSERT);
+                dbinstance.UpdateEx(&mut r,crate::btree::MODE_UPSERT);
             }
-    
+
+            r.Set("id".as_bytes(), Value::BYTES(("21").as_bytes().to_vec()));
+            r.Set( "name".as_bytes(), Value::BYTES(("Bob504").as_bytes().to_vec()));
+            r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+            r.Set("age".as_bytes(), Value::INT16(20));
+            r.Set("married".as_bytes(), Value::BOOL(false));
+
+            dbinstance.UpdateEx(&mut r,crate::btree::MODE_UPSERT);
+
+
+            r.Set("id".as_bytes(), Value::BYTES(("22").as_bytes().to_vec()));
+            dbinstance.DeleteEx(&mut r);
+
             let mut key1 = Record::new(&tdef);
             let mut key2 = Record::new(&tdef);
             key1.Set("name".as_bytes(), Value::BYTES("Bob1".as_bytes().to_vec()));
