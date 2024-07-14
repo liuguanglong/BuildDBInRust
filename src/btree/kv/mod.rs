@@ -16,6 +16,8 @@ pub enum ContextError{
     ExtendNTSectionError,
     FlushViewofFileError,
     FlushFileBUffersError,
+    NotDataBaseFile,
+    LoadDataException,
 
 }
 
@@ -30,6 +32,8 @@ impl fmt::Display for ContextError {
             ContextError::ExtendNTSectionError => write!(f,"Exception occured when trying to extend net section!"),
             ContextError::FlushViewofFileError => write!(f,"Exception occured when trying to flush content of mapping view!"),
             ContextError::FlushFileBUffersError => write!(f,"Exception occured when trying to flush content of file buffer!"),
+            ContextError::NotDataBaseFile => write!(f,"Exception occured when trying to load database file! It's not a database file!"),
+            ContextError::LoadDataException => write!(f,"Exception occured when trying to load database file! File content is wrong!"),
         }
     }
 }
@@ -38,3 +42,4 @@ pub const BTREE_PAGE_SIZE:usize = 4096;
 pub const BNODE_FREE_LIST: u16 = 3;
 pub const FREE_LIST_HEADER: usize = 4 + 8 + 8;
 pub const FREE_LIST_CAP: usize = (BTREE_PAGE_SIZE - FREE_LIST_HEADER) / 8;
+pub const DB_SIG:&[u8] = "BuildYourOwnDB22".as_bytes();

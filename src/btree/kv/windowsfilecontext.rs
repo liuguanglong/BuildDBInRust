@@ -1,6 +1,7 @@
 use std::ffi::{CString};
 
-use crate::btree::kv::nodeinterface::BNodeReadInterface;
+use crate::btree::kv::nodeinterface::{BNodeFreeListInterface, BNodeReadInterface};
+use crate::btree::kv::{BTREE_PAGE_SIZE, DB_SIG};
 #[cfg(windows)]extern crate ntapi;
 use ntapi::ntmmapi::{NtExtendSection,NtUnmapViewOfSection,NtMapViewOfSection,NtCreateSection,ViewUnmap,};
 use winapi::shared::ntdef::PHANDLE;
@@ -32,9 +33,13 @@ struct WindowsFileContext {
     fileSize:i64,
     dwPageSize:usize,
     root: u64,
+    pageflushed: u64, // database size in number of pages
+    nfreelist: u16, //number of pages taken from the free list
+    nappend: u16, //number of pages to be appended
+    freehead: u64 //head of freeelist
 }
 
-// impl KVContextInterface for WinFileContext {
+// impl KVContextInterface for  WindowsFileContext {
 
 //     fn add(&mut self,node:BNode) -> u64 
 //     {
@@ -59,7 +64,7 @@ struct WindowsFileContext {
 //     {
 //         self.pages.remove(&key)
 //     }
-
+   
 //     fn open(&mut self){
 
 //     }
@@ -167,6 +172,10 @@ impl WindowsFileContext {
             fileSize:filesize,
             dwPageSize:pageSize,
             root:0,
+            pageflushed:0,
+            nfreelist:0,
+            nappend:0,
+            freehead:0,
         })
     }
 
@@ -192,10 +201,127 @@ impl WindowsFileContext {
         return ret;
     }
 
+    // the master page format.
+    // it contains the pointer to the root and other important bits.
+    // | sig | btree_root | page_used |
+    // | 16B | 8B | 8B |
+    fn masterload(&mut self)->Result<(),ContextError>
+    {
+        //Init Db file
+        if self.fileSize == 0 {
+            if let Err(er) = self.extendFile(3){
+                return Err(ContextError::ExtendNTSectionError);
+            };
+
+            self.pageflushed = 2;
+            self.nfreelist = 0;
+            self.nappend = 0;
+            self.root = 0;
+
+            let mut newNode = BNode::new(BTREE_PAGE_SIZE);
+            newNode.flnSetHeader(0, 0);
+            newNode.flnSetTotal(0);
+
+            unsafe {
+                let buffer = self.lpBaseAddress as *mut u8;
+                for i  in 0..BTREE_PAGE_SIZE
+                {
+                    *buffer.add(BTREE_PAGE_SIZE + i) = newNode.data()[i];
+                }
+            }
+
+            self.freehead = 1;
+            self.masterStore();
+            let ret = self.syncFile();
+            if let Err(err) = ret
+            {
+                return Err(err);
+            };
+
+            return Ok(());
+        }
+
+        //Load Db File
+        unsafe {
+            let buffer = self.lpBaseAddress as *mut u8;
+            for i in 0..16
+            {
+                if *buffer.add(i) != DB_SIG[i]
+                {
+                    return Err(ContextError::NotDataBaseFile);
+                }
+            }
+
+            let mut pos: usize = 16;
+            let mut content:[u8;8] = [0;8];
+            
+            for i in 0..8
+            {
+                content[i] = *buffer.add(i+ pos);
+            }
+            let root = u64::from_le_bytes(content[0..8].try_into().unwrap());
+
+            pos = 24;
+            for i in 0..8
+            {
+                content[i] = *buffer.add(i+ pos);
+            }
+            let used = u64::from_le_bytes(content[0..8].try_into().unwrap());
+
+            pos = 32;
+            for i in 0..8
+            {
+                content[i] = *buffer.add(i+ pos);
+            }
+            let freehead = u64::from_le_bytes(content[0..8].try_into().unwrap());
+
+            let mut bad: bool = !(1 <= used && used <= (self.fileSize as u64)/ BTREE_PAGE_SIZE as u64);
+            bad = bad || !(0 <= root && root < used);
+            if (bad == true) {
+                return Err(ContextError::LoadDataException);
+            }
+    
+            self.root = root;
+            self.pageflushed = used;
+            self.nfreelist = 0;
+            self.nappend = 0;    
+        }
+
+       Ok(())
+    }
+
+
+    // update the master page. it must be atomic.
+    fn masterStore(&mut self) {
+        unsafe {
+            let buffer = self.lpBaseAddress as *mut u8;
+            
+            let mut data: [u8;32] = [0;32];
+            for i in 0..16
+            {
+                data[i] = DB_SIG[i];
+            }
+
+            let mut pos: usize = 16;
+            data[pos..pos+8].copy_from_slice(&self.root.to_le_bytes());
+
+            pos = 24;
+            data[pos..pos+8].copy_from_slice(&self.pageflushed.to_le_bytes());
+    
+            pos = 32;
+            data[pos..pos+8].copy_from_slice(&self.freehead.to_le_bytes());
+
+            for i in 0..32
+            {
+                *buffer.add(i) = data[i];
+            }
+        }
+    }
+
     pub fn syncFile(&mut self) -> Result<(),ContextError> {
 
         unsafe{
-            if (FlushViewOfFile(self.lpBaseAddress, 0) == 0) {
+            if  FlushViewOfFile(self.lpBaseAddress, 0) == 0 {
                 eprintln!("Failed to flush view of file");
                 return Err(ContextError::FlushViewofFileError);
             }
@@ -246,9 +372,10 @@ mod tests {
     #[test]
     fn test_FileContent()
     {
-        let mut context = WindowsFileContext::new("c:/temp/rustfile.txt".as_bytes(),4096,10);
+        let mut context = WindowsFileContext::new("c:/temp/rustfile1.txt".as_bytes(),4096,10);
         if let Ok(mut dbContext) = context
         {
+            println!("File Size:{}",dbContext.fileSize);
             dbContext.set("1234567890abcdefghighk".as_bytes());
             let ret = dbContext.extendFile(20);
             if let Ok(_) = ret
