@@ -38,3 +38,13 @@ pub trait BNodeOperationInterface{
     fn nodeReplace2Kid<T:BNodeReadInterface>(&mut self, oldNode: &T, idx: u16, ptrMergedNode: u64, key: &[u8]); 
     fn nodeReplaceKidN<T:BNodeReadInterface>(&mut self, oldNode: &T, idx: u16,kvs:Vec<(u64,Vec<u8>)>);
 }
+
+pub trait BNodeFreeListInterface{
+    fn flnSetHeader(&mut self, keynumber: u16, next: u64);
+    fn flnSize(&self)->u16;
+    fn flnNext(&self)->u64;
+    fn flnPtr(&self, idx: usize)->u64;
+    fn flnSetPtr(&mut self, idx: usize, value: u64);
+    fn flnSetTotal(&mut self, value: u64);
+    fn flnGetTotal(&self)->u64;
+}

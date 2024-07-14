@@ -1,9 +1,13 @@
 use crate::btree::kv::nodeinterface::BNodeReadInterface;
 use crate::btree::kv::nodeinterface::BNodeWriteInterface;
 use crate::btree::kv::nodeinterface::BNodeOperationInterface;
+use crate::btree::kv::FREE_LIST_HEADER;
 use crate::btree::HEADER;
 use crate::btree::BNODE_NODE;
 use crate::btree::BNODE_LEAF;
+
+use super::nodeinterface::BNodeFreeListInterface;
+use super::BNODE_FREE_LIST;
 
 pub struct BNode {
     data: Box<[u8]>,
@@ -335,6 +339,48 @@ impl BNodeReadInterface for BNode {
         }
         println!();
         // println!("{:?}", self.data);
+    }
+}
+
+impl BNodeFreeListInterface for BNode
+{
+    fn flnSetHeader(&mut self, keynumber: u16, next: u64) {
+
+        let bytes_nodetype: [u8; 2] = BNODE_FREE_LIST.to_le_bytes();
+        let bytes_nkeys: [u8; 2] = keynumber.to_le_bytes();
+
+        self.data[0..2].copy_from_slice(&bytes_nodetype);
+        self.data[2..4].copy_from_slice(&bytes_nkeys);
+
+        let pos: usize = (HEADER + 8) as usize;
+        self.data[pos..pos+8].copy_from_slice(&next.to_le_bytes());
+    }
+
+    fn flnSize(&self)->u16 {
+        return u16::from_le_bytes(self.data[2..4].try_into().unwrap());
+    }
+
+    fn flnNext(&self)->u64 {
+        let pos: usize = HEADER as usize + 8;
+        return u64::from_le_bytes(self.data[pos..pos+8].try_into().unwrap());
+    }
+
+    fn flnPtr(&self, idx: usize)->u64 {
+        let pos:usize = FREE_LIST_HEADER + 8 * idx;    
+        return u64::from_le_bytes(self.data[pos..pos+8].try_into().unwrap());
+    }
+
+    fn flnSetPtr(&mut self, idx: usize, value: u64) {
+        let pos: usize = FREE_LIST_HEADER + 8 * idx;
+        self.data[pos..pos+8].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn flnSetTotal(&mut self, value: u64) {
+        self.data[4..4+8].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn flnGetTotal(&self)->u64 {
+        return u64::from_le_bytes(self.data[4..4+8].try_into().unwrap());
     }
 }
 

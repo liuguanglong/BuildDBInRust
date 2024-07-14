@@ -211,8 +211,6 @@ impl WindowsFileContext {
     pub fn extendFile(&mut self, pageCount: usize) -> Result<(),ContextError>{
 
         let mut SectionSize: LARGE_INTEGER = unsafe { std::mem::zeroed() };
-        // SectionSize.u_mut().HighPart = self.fileSize + pageCount * self.dwPageSize;
-        // SectionSize.u_mut().LowPart = 
         unsafe {
             *SectionSize.QuadPart_mut() = self.fileSize + (pageCount * self.dwPageSize) as i64;
 
