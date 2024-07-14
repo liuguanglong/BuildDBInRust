@@ -22,7 +22,7 @@ pub trait BNodeWriteInterface{
     fn set_ptr(&mut self, idx: usize, value: u64);
     fn set_header(& mut self, nodetype: u16, keynumber: u16);
     fn copy_value(&mut self,s :&str);
-    fn copy_Content(&mut self, s :*mut u8,length:usize);
+    fn copy_Content(&mut self, s :*mut u8,offset:usize,length:usize);
     fn set_offSet(&mut self,idx:u16,offset:u16);
     fn node_append_kv(&mut self, idx: u16, ptr: u64, key: &[u8], val: &[u8]);
     fn node_append_range<T:BNodeReadInterface>(&mut self, old: &T, dst_new: u16, src_old: u16, number: u16);

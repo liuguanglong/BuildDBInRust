@@ -137,11 +137,11 @@ impl BNodeWriteInterface for BNode{
         }
     }
 
-    fn copy_Content(&mut self,ptr :*mut u8,length:usize){
+    fn copy_Content(&mut self,ptr :*mut u8,offset:usize,length:usize){
         unsafe {
             for i in 0..length
             {
-                self.data[i] = *ptr;
+                self.data[i] = *ptr.add(i+offset);
             }
         }
     }
@@ -396,6 +396,8 @@ impl BNodeFreeListInterface for BNode
 
 #[cfg(test)]
 mod tests {
+    use crate::btree::BTREE_PAGE_SIZE;
+
     use super::*;
 
     #[test]
@@ -531,5 +533,16 @@ mod tests {
         //     Some(n) => n.print(),
         //     None => {}
         // }
+    }
+
+    #[test]
+    fn test_nodefln()
+    {
+        let mut n1 = BNode::new(BTREE_PAGE_SIZE);
+        n1.flnSetHeader(0, 0);
+        n1.flnSetTotal(0);
+
+        let t = n1.flnSize();
+        assert_eq!(0,t);
     }
 }

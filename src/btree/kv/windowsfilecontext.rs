@@ -56,6 +56,7 @@ impl FreeListInterface for WindowsFileContext{
         };
         
         let mut curNode = curNode.unwrap();
+        let flnSize = curNode.flnSize();
         while (curNode.flnSize() <= count) {
 
             count -= curNode.flnSize();
@@ -153,7 +154,8 @@ impl FreeListInterface for WindowsFileContext{
 
         let mut headnode = self.get(self.freehead);
         if let Some( mut h) = headnode{
-            h.flnSetTotal(newTotal);            
+            h.flnSetTotal(newTotal);  
+            self.useNode(self.freehead, &h);          
         } 
 
         Ok(())
@@ -205,7 +207,8 @@ impl KVContextInterface for  WindowsFileContext {
     fn add(&mut self,node:BNode) -> u64 
     {
         let mut ptr: u64 = 0;
-        if self.nfreelist < self.TotalFreeNode().unwrap() as u16 
+        let totalfree = self.TotalFreeNode().unwrap() as u16;
+        if self.nfreelist < totalfree
         {
             // reuse a deallocated page
             ptr = self.GetFreeNode(self.nfreelist).unwrap();
@@ -397,7 +400,7 @@ impl WindowsFileContext {
         let mut newNode = BNode::new(BTREE_PAGE_SIZE);
         unsafe {
             let buffer = self.lpBaseAddress as *mut u8;
-            newNode.copy_Content(buffer,BTREE_PAGE_SIZE);
+            newNode.copy_Content(buffer,offset,BTREE_PAGE_SIZE);
         }
         Ok(newNode)
     }
@@ -571,7 +574,7 @@ impl WindowsFileContext {
         unsafe {
             let buffer = self.lpBaseAddress as *mut u8;
             
-            let mut data: [u8;32] = [0;32];
+            let mut data: [u8;40] = [0;40];
             for i in 0..16
             {
                 data[i] = DB_SIG[i];
@@ -586,7 +589,7 @@ impl WindowsFileContext {
             pos = 32;
             data[pos..pos+8].copy_from_slice(&self.freehead.to_le_bytes());
 
-            for i in 0..32
+            for i in 0..40
             {
                 *buffer.add(i) = data[i];
             }
@@ -642,24 +645,34 @@ impl WindowsFileContext {
 
 #[cfg(test)]
 mod tests {
+    use crate::btree::btree::{btree::BTree, btreeinterface::BTreeKVInterface};
+
     use super::*;
 
     #[test]
     fn test_FileContent()
     {
-        let mut context = WindowsFileContext::new("c:/temp/rustfile1.txt".as_bytes(),4096,10);
+        let mut context = WindowsFileContext::new("c:/temp/rustdb.dat".as_bytes(),4096,10);
+        
         if let Ok(mut dbContext) = context
         {
-            println!("File Size:{}",dbContext.fileSize);
-            //dbContext.set("1234567890abcdefghighk".as_bytes());
-            let ret = dbContext.extendFile(20);
-            if let Ok(_) = ret
+            dbContext.open();
+            let mut tree = BTree::new(&mut dbContext);
+            
+            // tree.Set("2".as_bytes(), &[32;25], crate::btree::MODE_UPSERT);
+            // tree.Set("1".as_bytes(), &[31;25], crate::btree::MODE_UPSERT);
+            // tree.Set("hello".as_bytes(), "rust".as_bytes(), crate::btree::MODE_UPSERT);
+            // tree.Set("4".as_bytes(), &[34;25], crate::btree::MODE_UPSERT);
+            // tree.Set("3".as_bytes(), &[33;25], crate::btree::MODE_UPSERT);
+    
+            let v = tree.Get("hello".as_bytes());
+            match(v)
             {
-                //let ret = dbContext.get(0,15);
-                //println!("Key:{} \n", String::from_utf8(ret).unwrap());
+                Some(s) => println!("{0}",String::from_utf8(s).unwrap()),
+                None=> {}
             }
-            let ret = dbContext.syncFile();
-            assert!(ret.is_ok());
+            dbContext.close();
+
         }
     }
     
