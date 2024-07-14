@@ -21,41 +21,85 @@ use winapi::um::winnt::{FILE_ATTRIBUTE_NORMAL, GENERIC_READ, GENERIC_WRITE,SECTI
 use winapi::um::fileapi::{CREATE_NEW, OPEN_EXISTING,OPEN_ALWAYS};
 use winapi::shared::minwindef::DWORD;
 
-struct FileContext {
+use super::contextinterface::KVContextInterface;
+use super::node::BNode;
+use super::ContextError;
+
+struct WindowsFileContext {
     fHandle: HANDLE,
     hSection: HANDLE,
-    data: [u8; 1024],
     lpBaseAddress: *mut winapi::ctypes::c_void,
     fileSize:i64,
     dwPageSize:usize,
+    root: u64,
 }
 
-impl Drop for FileContext {
+// impl KVContextInterface for WinFileContext {
+
+//     fn add(&mut self,node:BNode) -> u64 
+//     {
+//         self.idx += 1;
+//         self.pages.insert(self.idx,node);
+//         return self.idx; 
+//     }
+
+//     fn get(&self,key:u64) -> Option<BNode>
+//     {
+//         let node = self.pages.get(&key);
+//         match node
+//         {
+//             Some(x) => {
+//                 Some(x.copy())    
+//             },
+//             None =>  None,
+//         }
+//     }
+
+//     fn del(&mut self,key:u64)-> Option<BNode>
+//     {
+//         self.pages.remove(&key)
+//     }
+
+//     fn open(&mut self){
+
+//     }
+//     fn close(&mut self){
+
+//     }
+//     fn get_root(&self)->u64{
+//         return self.root;
+//     }
+//     fn set_root(&mut self,ptr:u64){
+//         self.root = ptr;
+//     }
+//     fn save(&mut self){
+
+//     }
+
+
+// }
+
+impl Drop for WindowsFileContext {
     fn drop(&mut self) {
         unsafe {
             // 释放映射的内存
             let status = NtUnmapViewOfSection(GetCurrentProcess(), self.lpBaseAddress);
             if !NT_SUCCESS(status) {
                 eprintln!("Failed to unmap view of section");
-            } else {
-                println!("View unmapped successfully");
             }
-
             if self.hSection != INVALID_HANDLE_VALUE {
                 CloseHandle(self.hSection);
-                println!("Mapping Section closed in Drop");
             }
             if self.fHandle != INVALID_HANDLE_VALUE {
                 CloseHandle(self.fHandle);
-                println!("File handle closed in Drop");
             }
         }
     }
 }
 
-impl FileContext {
+impl WindowsFileContext {
     // 构造函数
-    fn new(fileName: &[u8], pageSize: usize, maxPageCount: usize) -> Self {
+    fn new(fileName: &[u8], pageSize: usize, maxPageCount: usize) -> Result<Self,ContextError> {
 
         let name = CString::new(fileName).expect("CString::new failed");
         let mut SectionSize: LARGE_INTEGER = unsafe { std::mem::zeroed() };
@@ -69,20 +113,18 @@ impl FileContext {
             handle = CreateFileA(name.as_ptr(), GENERIC_READ | GENERIC_WRITE, 0, null_mut(), OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, null_mut());
             //check hanlde
             if handle == INVALID_HANDLE_VALUE {
-                println!("Failed to create file");
-            } else {
-                println!("File created successfully");
-                // winapi::um::handleapi::CloseHandle(handle);
-            }
+                eprintln!("Failed to open file");
+                return  Err(ContextError::OpenFileError);
+            } 
 
             //get File Size
             let mut file_size: LARGE_INTEGER = std::mem::zeroed();
             let success = GetFileSizeEx(handle, &mut file_size);
             if (success == 0) {
-                println!("Failed to get file size. \n");            
+                eprintln!("Failed to get file size");
+                return  Err(ContextError::GetFileSizeError);            
             }
             filesize = file_size.QuadPart().abs();
-            println!("file size: {}\n", file_size.QuadPart());
 
             *SectionSize.QuadPart_mut()= pageSize as i64;
             let status = NtCreateSection(  &mut hSection, SECTION_EXTEND_SIZE | SECTION_MAP_READ | SECTION_MAP_WRITE, null_mut(), 
@@ -90,9 +132,7 @@ impl FileContext {
 
             if !NT_SUCCESS(status) {
                 eprintln!("Failed to create section");
-            }
-            else {
-                println!("Mapping Section created successfully");
+                return Err(ContextError::CreateNTSectionError);
             }
 
             // 映射部分
@@ -111,21 +151,23 @@ impl FileContext {
 
             if !NT_SUCCESS(status) {
                 eprintln!("Failed to map view of section");
+                return Err(ContextError::MapSectionViewError);
             }
 
             if (lpZwMapping == INVALID_HANDLE_VALUE) {
                 eprintln!("Failed to ap view of section");
+                return Err(ContextError::MapSectionViewError);
             }
         }
  
-        FileContext {
-            data: [0; 1024],  // 初始化数组
+        Ok(WindowsFileContext {
             fHandle:handle,
             hSection : hSection,
             lpBaseAddress : lpZwMapping,
             fileSize:filesize,
-            dwPageSize:pageSize
-        }
+            dwPageSize:pageSize,
+            root:0,
+        })
     }
 
     fn set(&mut self,content:&[u8]){
@@ -150,7 +192,24 @@ impl FileContext {
         return ret;
     }
 
-    pub fn extendFile(&mut self, pageCount: usize) {
+    pub fn syncFile(&mut self) -> Result<(),ContextError> {
+
+        unsafe{
+            if (FlushViewOfFile(self.lpBaseAddress, 0) == 0) {
+                eprintln!("Failed to flush view of file");
+                return Err(ContextError::FlushViewofFileError);
+            }
+
+            if  FlushFileBuffers(self.fHandle) == 0 {
+                eprintln!("Failed to flush file buffers.");
+                return Err(ContextError::FlushFileBUffersError);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn extendFile(&mut self, pageCount: usize) -> Result<(),ContextError>{
+
         let mut SectionSize: LARGE_INTEGER = unsafe { std::mem::zeroed() };
         // SectionSize.u_mut().HighPart = self.fileSize + pageCount * self.dwPageSize;
         // SectionSize.u_mut().LowPart = 
@@ -159,23 +218,24 @@ impl FileContext {
 
             let statusExtend = NtExtendSection(self.hSection, &mut SectionSize);
             if !NT_SUCCESS(statusExtend) {
-                println!("Failed ExtendSection.\n");
+                eprintln!("Failed ExtendSection.\n");
+                return Err(ContextError::ExtendNTSectionError);
             }                
             self.fileSize = SectionSize.QuadPart().abs();
         }
-        println!("Extend File Successfully.\n");
+        Ok(())
     }
 
     fn print(&self) {
-        for i in 0..1024 {
-            if  i > 0 {
-                print!("{:02x} ", self.data[i]);
-            }
-            if i % 50 == 0
-            {
-                println!();
-            }
-        }
+        // for i in 0..1024 {
+        //     if  i > 0 {
+        //         print!("{:02x} ", self.data[i]);
+        //     }
+        //     if i % 50 == 0
+        //     {
+        //         println!();
+        //     }
+        // }
         println!();
         // println!("{:?}", self.data);
     }
@@ -188,11 +248,19 @@ mod tests {
     #[test]
     fn test_FileContent()
     {
-        let mut context = FileContext::new("c:/temp/rustfile.txt".as_bytes(),4096,10);
-        context.set("1234567890abcdefghighk".as_bytes());
-        context.extendFile(20);
-        let ret = context.get(0,15);
-        println!("Key:{} \n", String::from_utf8(ret).unwrap());
+        let mut context = WindowsFileContext::new("c:/temp/rustfile.txt".as_bytes(),4096,10);
+        if let Ok(mut dbContext) = context
+        {
+            dbContext.set("1234567890abcdefghighk".as_bytes());
+            let ret = dbContext.extendFile(20);
+            if let Ok(_) = ret
+            {
+                let ret = dbContext.get(0,15);
+                println!("Key:{} \n", String::from_utf8(ret).unwrap());
+            }
+            let ret = dbContext.syncFile();
+            assert!(ret.is_ok());
+        }
     }
     
 }
