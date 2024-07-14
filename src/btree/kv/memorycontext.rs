@@ -6,6 +6,8 @@ use crate::btree::kv::node::BNode;
 use std::collections::HashMap;
 use crate::btree::kv::noderef::BNodeRef;
 
+use super::ContextError;
+
 pub struct MemoryContext{
     idx:u64,
     root: u64,
@@ -47,8 +49,8 @@ impl KVContextInterface for MemoryContext {
         self.pages.remove(&key)
     }
 
-    fn open(&mut self){
-
+    fn open(&mut self)->Result<(),ContextError>{
+        Ok(())
     }
     fn close(&mut self){
 
@@ -59,8 +61,8 @@ impl KVContextInterface for MemoryContext {
     fn set_root(&mut self,ptr:u64){
         self.root = ptr;
     }
-    fn save(&mut self){
-
+    fn save(&mut self)->Result<(), ContextError>{
+        Ok(())
     }
 
 

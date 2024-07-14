@@ -137,6 +137,15 @@ impl BNodeWriteInterface for BNode{
         }
     }
 
+    fn copy_Content(&mut self,ptr :*mut u8,length:usize){
+        unsafe {
+            for i in 0..length
+            {
+                self.data[i] = *ptr;
+            }
+        }
+    }
+
     fn set_header(& mut self, nodetype: u16, keynumber: u16) {
 
         let bytes_nodetype: [u8; 2] = nodetype.to_le_bytes();

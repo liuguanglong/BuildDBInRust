@@ -1,4 +1,4 @@
-use super::node::BNode;
+use super::{node::BNode, ContextError};
 
 
 // 定义读取接口
@@ -22,6 +22,7 @@ pub trait BNodeWriteInterface{
     fn set_ptr(&mut self, idx: usize, value: u64);
     fn set_header(& mut self, nodetype: u16, keynumber: u16);
     fn copy_value(&mut self,s :&str);
+    fn copy_Content(&mut self, s :*mut u8,length:usize);
     fn set_offSet(&mut self,idx:u16,offset:u16);
     fn node_append_kv(&mut self, idx: u16, ptr: u64, key: &[u8], val: &[u8]);
     fn node_append_range<T:BNodeReadInterface>(&mut self, old: &T, dst_new: u16, src_old: u16, number: u16);
@@ -47,4 +48,11 @@ pub trait BNodeFreeListInterface{
     fn flnSetPtr(&mut self, idx: usize, value: u64);
     fn flnSetTotal(&mut self, value: u64);
     fn flnGetTotal(&self)->u64;
+}
+
+pub trait FreeListInterface{
+    fn GetFreeNode(&self, topN: u16)-> Result<u64,ContextError>;
+    fn TotalFreeNode(&self)-> Result<u64,ContextError>;
+    fn UpdateFreeList(&mut self, popn: u16, freed:&Vec<u64>)->Result<(),ContextError>;
+    fn flPush(&mut self, listFreeNode: &mut Vec<u64>, listReuse:  &mut Vec<u64>);
 }
