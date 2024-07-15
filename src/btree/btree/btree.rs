@@ -724,7 +724,6 @@ impl <'a> BTree <'a>{
         //get and deallocate the kid node
         let kptr = oldNode.get_ptr(idx as usize);
         let mut knode = self.context.get(kptr).unwrap();
-        _ = self.context.del(kptr);
 
         let insertNode = self.treeInsert(&knode, key, val, mode);
         match insertNode{            
@@ -766,6 +765,7 @@ impl <'a> BTree <'a>{
             None => {}
         }
         //std.debug.print("Split Count:{d}", .{subNodes.Count});
+        _ = self.context.del(kptr);
     }
 
     // part of the treeInsert(): KV insertion to an internal node

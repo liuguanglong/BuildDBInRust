@@ -28,7 +28,7 @@ use super::node::BNode;
 use super::nodeinterface::{BNodeWriteInterface, FreeListInterface};
 use super::{ContextError, BNODE_FREE_LIST};
 
-struct WindowsFileContext {
+pub struct WindowsFileContext {
     fHandle: HANDLE,
     hSection: HANDLE,
     lpBaseAddress: *mut winapi::ctypes::c_void,
@@ -298,7 +298,7 @@ impl Drop for WindowsFileContext {
 
 impl WindowsFileContext {
     // 构造函数
-    fn new(fileName: &[u8], pageSize: usize, maxPageCount: usize) -> Result<Self,ContextError> {
+    pub fn new(fileName: &[u8], pageSize: usize, maxPageCount: usize) -> Result<Self,ContextError> {
 
         let name = CString::new(fileName).expect("CString::new failed");
         let mut SectionSize: LARGE_INTEGER = unsafe { std::mem::zeroed() };
@@ -419,7 +419,7 @@ impl WindowsFileContext {
 
         self.UpdateFreeList(self.nfreelist, &listFreeNode);
         let nPages: usize = (self.pageflushed + self.nappend as u64) as usize;
-        self.extendFile(nPages);
+        self.extendPages(nPages as i64);
 
         for entry in &self.updates
         {
@@ -491,10 +491,6 @@ impl WindowsFileContext {
                 return Err(ContextError::ExtendNTSectionError);
             };
 
-            self.pageflushed = 2;
-            self.nfreelist = 0;
-            self.nappend = 0;
-            self.root = 0;
 
             let mut newNode = BNode::new(BTREE_PAGE_SIZE);
             newNode.flnSetHeader(0, 0);
@@ -509,6 +505,25 @@ impl WindowsFileContext {
             }
 
             self.freehead = 1;
+
+            if self.get_root() == 0 {
+                let mut root = BNode::new(BTREE_PAGE_SIZE);
+                root.set_header(crate::btree::BNODE_LEAF, 1);
+                root.node_append_kv(0, 0, &[0;1], &[0;1]);
+                unsafe {
+                    let buffer = self.lpBaseAddress as *mut u8;
+                    for i  in 0..BTREE_PAGE_SIZE
+                    {
+                        *buffer.add(BTREE_PAGE_SIZE*2 + i) = root.data()[i];
+                    }
+                }
+            }
+            self.root = 2;
+
+            self.pageflushed = 3;
+            self.nfreelist = 0;
+            self.nappend = 0;
+
             self.masterStore();
             let ret = self.syncFile();
             if let Err(err) = ret
@@ -563,6 +578,7 @@ impl WindowsFileContext {
             self.pageflushed = used;
             self.nfreelist = 0;
             self.nappend = 0;    
+            self.freehead = freehead;
         }
 
        Ok(())
@@ -612,6 +628,34 @@ impl WindowsFileContext {
         Ok(())
     }
 
+    pub fn extendPages(&mut self,npages:i64) -> Result<(),ContextError>{
+
+        let mut filePages: i64 = self.fileSize / BTREE_PAGE_SIZE as i64;
+        if filePages >= npages 
+        {
+            return Ok(());
+        }
+
+        let mut nPageExtend: i64 = 0;
+        while (filePages < npages) {
+            let mut inc = filePages/ 8;
+            if (inc < 1) {
+                inc = 1;
+            }
+            nPageExtend += inc;
+            filePages += inc;
+        }
+
+        if let Err(er) = self.extendFile(nPageExtend as usize)
+        {
+            return Err(er);
+        }
+        else {
+            
+            return Ok(());
+        }
+    }
+
     pub fn extendFile(&mut self, pageCount: usize) -> Result<(),ContextError>{
 
         let mut SectionSize: LARGE_INTEGER = unsafe { std::mem::zeroed() };
@@ -652,18 +696,18 @@ mod tests {
     #[test]
     fn test_FileContent()
     {
-        let mut context = WindowsFileContext::new("c:/temp/rustdb.dat".as_bytes(),4096,10);
+        let mut context = WindowsFileContext::new("c:/temp/rustdb.dat".as_bytes(),4096,50);
         
         if let Ok(mut dbContext) = context
         {
             dbContext.open();
             let mut tree = BTree::new(&mut dbContext);
             
-            // tree.Set("2".as_bytes(), &[32;25], crate::btree::MODE_UPSERT);
-            // tree.Set("1".as_bytes(), &[31;25], crate::btree::MODE_UPSERT);
-            // tree.Set("hello".as_bytes(), "rust".as_bytes(), crate::btree::MODE_UPSERT);
-            // tree.Set("4".as_bytes(), &[34;25], crate::btree::MODE_UPSERT);
-            // tree.Set("3".as_bytes(), &[33;25], crate::btree::MODE_UPSERT);
+            tree.Set("2".as_bytes(), &[32;1000], crate::btree::MODE_UPSERT);
+            tree.Set("1".as_bytes(), &[31;2000], crate::btree::MODE_UPSERT);
+            tree.Set("hello".as_bytes(), "rust".as_bytes(), crate::btree::MODE_UPSERT);
+            tree.Set("4".as_bytes(), &[34;2000], crate::btree::MODE_UPSERT);
+            tree.Set("3".as_bytes(), &[33;2000], crate::btree::MODE_UPSERT);
     
             let v = tree.Get("hello".as_bytes());
             match(v)

@@ -406,6 +406,8 @@ impl<'a> DataBase<'a>{
 
 #[cfg(test)]
 mod tests {
+    use crate::btree::kv::windowsfilecontext::WindowsFileContext;
+
     use super::*;
 
     #[test]
@@ -548,13 +550,87 @@ mod tests {
                 
             }    
         }
-
-        // let ret = dbinstance.AddTable(&mut table);
-        // if let Err(ret) = ret
-        // {
-        //     println!("Error when add table:{}",ret);
-        // }
-
-
     }
+
+    #[test]
+    fn test_windows_database()
+    {
+        let mut context = WindowsFileContext::new("c:/temp/rustdb.dat".as_bytes(),4096,1000);
+        
+        if let Ok(mut dbContext) = context
+        {
+            dbContext.open();
+            let mut dbinstance = DataBase::new(&mut dbContext);
+
+            let mut table = TableDef{
+                Prefix:0,
+                Name: "person".as_bytes().to_vec(),
+                Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
+                Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
+                PKeys : 0,
+                Indexes : vec![vec!["address".as_bytes().to_vec() , "married".as_bytes().to_vec()],vec!["name".as_bytes().to_vec()]],
+                IndexPrefixes : vec![],
+            };
+            //table.FixIndexes();
+
+            let ret = dbinstance.AddTable(&mut table);
+            if let Err(ret) = ret
+            {
+                println!("Error when add table:{}",ret);
+            }
+
+            let ret = dbinstance.getTableDef("person".as_bytes());
+            if let Some(tdef) = ret
+            {
+                println!("Table define:{}",tdef);
+                let mut r = Record::new(&tdef);
+
+                for i in 0..100 {
+                    r.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
+                    r.Set( "name".as_bytes(), Value::BYTES(format!("Bob{}", i).as_bytes().to_vec()));
+                    r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+                    r.Set("age".as_bytes(), Value::INT16(20));
+                    r.Set("married".as_bytes(), Value::BOOL(false));
+
+                    dbinstance.UpdateEx(&mut r,crate::btree::MODE_UPSERT);
+                }
+
+                r.Set("id".as_bytes(), Value::BYTES(("21").as_bytes().to_vec()));
+                r.Set( "name".as_bytes(), Value::BYTES(("Bob504").as_bytes().to_vec()));
+                r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+                r.Set("age".as_bytes(), Value::INT16(20));
+                r.Set("married".as_bytes(), Value::BOOL(false));
+
+                dbinstance.UpdateEx(&mut r,crate::btree::MODE_UPSERT);
+
+
+                r.Set("id".as_bytes(), Value::BYTES(("22").as_bytes().to_vec()));
+                dbinstance.DeleteEx(&mut r);
+
+                let mut key1 = Record::new(&tdef);
+                let mut key2 = Record::new(&tdef);
+                key1.Set("name".as_bytes(), Value::BYTES("Bob1".as_bytes().to_vec()));
+                key2.Set("name".as_bytes(), Value::BYTES("Bob5".as_bytes().to_vec()));
+                //let mut scanner = dbinstance.Seek(1,OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
+                let mut scanner = dbinstance.Scan(OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
+        
+                let mut r3 = Record::new(&tdef);
+                match &mut scanner {
+                    Ok(cursor) =>{
+                        while cursor.Valid(){
+                                cursor.Deref(&dbinstance,&mut r3);
+                                println!("{}", r3);
+                                cursor.Next();
+                            }                
+                    },
+                    Err(err) => { println!("Error when add table:{}",err)}
+                    
+                }    
+            }
+        }
+        else {
+            println!("Open Database File Error");
+        }
+    }
+
 }
