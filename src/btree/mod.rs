@@ -4,6 +4,7 @@ pub mod util;
 pub mod table;
 pub mod scan;
 pub mod db;
+pub mod tx;
 
 use std::fmt;
 
