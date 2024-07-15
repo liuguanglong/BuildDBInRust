@@ -66,6 +66,7 @@ impl KVTxInterface for KVTx {
 
 pub struct KVContext{
     data:HashMap<Vec<u8>,Vec<u8>>,  
+    writer:Shared<()>,
     //mu:Mutex<u16>,
     //writer:Mutex<u16>,  
 }
@@ -175,17 +176,22 @@ mod tests {
     fn write(i:u64,ct:Shared<KVContext>)
     {
         let mut rng = rand::thread_rng();
-        let random_number: u64 = rng.gen_range(1..20);
-        thread::sleep(Duration::from_millis(random_number));
+        let random_number: u64 = rng.gen_range(1..10);
 
         let mut ct1 = ct.lock().unwrap();
         let mut tx = ct1.begintx();
+        let mut writer = ct1.writer.clone();
+        println!("Begin Set Value:{}-{}",i,i);        
         drop(ct1);
+        let lockWriter = writer.lock().unwrap();
+        thread::sleep(Duration::from_millis(random_number));
 
         let  t = tx.Set(format!("{}", i).as_bytes(), format!("{}", i ).as_bytes());
-        println!("Set Value:{}-{}",i,i);        
+        
         let mut ct1 = ct.lock().unwrap();
         ct1.commit(&mut tx);
+        drop(lockWriter);
+        println!("End Set Value:{}-{}",i,i);        
         drop(ct1);
     }
 
@@ -198,7 +204,7 @@ mod tests {
         data.insert("3".as_bytes().to_vec(), "c".as_bytes().to_vec());
         data.insert("4".as_bytes().to_vec(), "d".as_bytes().to_vec());
 
-        let mut context = KVContext{data:data};
+        let mut context = KVContext{data:data,writer:Shared::new(())};
         let instance = Shared::new(context);
         let mut handles = vec![];
 
