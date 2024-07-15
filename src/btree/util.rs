@@ -24,14 +24,12 @@ pub fn deescapeString(content: &[u8]) -> Vec<u8> {
     let mut list:Vec<u8> = Vec::new();
     //println!("Before dedescapString: {:?}", content);
     let mut idx: usize = 0;
-
-
     // if content[idx] == 0xfe
     // {
     //     idx +=1 ;
     // }
 
-    while (idx < content.len() - 1) {
+    while idx < content.len() - 1 {
         if content[idx] == 1 {
             if content[idx + 1] == 1 {
                 list.push(0x00);
@@ -52,7 +50,10 @@ pub fn deescapeString(content: &[u8]) -> Vec<u8> {
             idx += 1;
         }
     }
-    list.push(content[idx]);
+    if idx == content.len() -1
+    {
+        list.push(content[idx]);
+    }
     //println!("decoded:{}",String::from_utf8(list.to_vec()).unwrap());
     return list;
 }

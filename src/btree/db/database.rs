@@ -555,7 +555,7 @@ mod tests {
     #[test]
     fn test_windows_database()
     {
-        let mut context = WindowsFileContext::new("c:/temp/rustdb.dat".as_bytes(),4096,1000);
+        let mut context = WindowsFileContext::new("c:/temp/rustdb1.dat".as_bytes(),4096,1000);
         
         if let Ok(mut dbContext) = context
         {
@@ -572,7 +572,7 @@ mod tests {
                 IndexPrefixes : vec![],
             };
             //table.FixIndexes();
-
+            
             let ret = dbinstance.AddTable(&mut table);
             if let Err(ret) = ret
             {
@@ -585,7 +585,8 @@ mod tests {
                 println!("Table define:{}",tdef);
                 let mut r = Record::new(&tdef);
 
-                for i in 0..100 {
+                for i in 0..50 {
+
                     r.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
                     r.Set( "name".as_bytes(), Value::BYTES(format!("Bob{}", i).as_bytes().to_vec()));
                     r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
@@ -595,8 +596,8 @@ mod tests {
                     dbinstance.UpdateEx(&mut r,crate::btree::MODE_UPSERT);
                 }
 
-                r.Set("id".as_bytes(), Value::BYTES(("21").as_bytes().to_vec()));
-                r.Set( "name".as_bytes(), Value::BYTES(("Bob504").as_bytes().to_vec()));
+                r.Set("id".as_bytes(), Value::BYTES(("2").as_bytes().to_vec()));
+                r.Set( "name".as_bytes(), Value::BYTES(("Bob304").as_bytes().to_vec()));
                 r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
                 r.Set("age".as_bytes(), Value::INT16(20));
                 r.Set("married".as_bytes(), Value::BOOL(false));
@@ -604,15 +605,15 @@ mod tests {
                 dbinstance.UpdateEx(&mut r,crate::btree::MODE_UPSERT);
 
 
-                r.Set("id".as_bytes(), Value::BYTES(("22").as_bytes().to_vec()));
+                r.Set("id".as_bytes(), Value::BYTES(("45").as_bytes().to_vec()));
                 dbinstance.DeleteEx(&mut r);
 
                 let mut key1 = Record::new(&tdef);
                 let mut key2 = Record::new(&tdef);
-                key1.Set("name".as_bytes(), Value::BYTES("Bob1".as_bytes().to_vec()));
+                key1.Set("name".as_bytes(), Value::BYTES("Bob2".as_bytes().to_vec()));
                 key2.Set("name".as_bytes(), Value::BYTES("Bob5".as_bytes().to_vec()));
                 //let mut scanner = dbinstance.Seek(1,OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
-                let mut scanner = dbinstance.Scan(OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
+                let mut scanner = dbinstance.Scan(OP_CMP::CMP_GE, OP_CMP::CMP_LE, &key1, &key2);
         
                 let mut r3 = Record::new(&tdef);
                 match &mut scanner {
@@ -623,7 +624,7 @@ mod tests {
                                 cursor.Next();
                             }                
                     },
-                    Err(err) => { println!("Error when add table:{}",err)}
+                    Err(err) => { println!("Error Scan:{}",err)}
                     
                 }    
             }

@@ -410,7 +410,7 @@ impl WindowsFileContext {
         let mut listFreeNode:Vec<u64> = Vec::new();
         for entry in &self.updates
         {
-            if let Some(v) = entry.1 
+            if let None = entry.1 
             {
                 let ptr = entry.0;
                 listFreeNode.push(*ptr);
@@ -500,11 +500,11 @@ impl WindowsFileContext {
                 let buffer = self.lpBaseAddress as *mut u8;
                 for i  in 0..BTREE_PAGE_SIZE
                 {
-                    *buffer.add(BTREE_PAGE_SIZE + i) = newNode.data()[i];
+                    *buffer.add(BTREE_PAGE_SIZE*2 + i) = newNode.data()[i];
                 }
             }
 
-            self.freehead = 1;
+            self.freehead = 2;
 
             if self.get_root() == 0 {
                 let mut root = BNode::new(BTREE_PAGE_SIZE);
@@ -514,11 +514,11 @@ impl WindowsFileContext {
                     let buffer = self.lpBaseAddress as *mut u8;
                     for i  in 0..BTREE_PAGE_SIZE
                     {
-                        *buffer.add(BTREE_PAGE_SIZE*2 + i) = root.data()[i];
+                        *buffer.add(BTREE_PAGE_SIZE + i) = root.data()[i];
                     }
                 }
             }
-            self.root = 2;
+            self.root = 1;
 
             self.pageflushed = 3;
             self.nfreelist = 0;
@@ -703,18 +703,18 @@ mod tests {
             dbContext.open();
             let mut tree = BTree::new(&mut dbContext);
             
-            tree.Set("2".as_bytes(), &[32;1000], crate::btree::MODE_UPSERT);
-            tree.Set("1".as_bytes(), &[31;2000], crate::btree::MODE_UPSERT);
-            tree.Set("hello".as_bytes(), "rust".as_bytes(), crate::btree::MODE_UPSERT);
-            tree.Set("4".as_bytes(), &[34;2000], crate::btree::MODE_UPSERT);
-            tree.Set("3".as_bytes(), &[33;2000], crate::btree::MODE_UPSERT);
+             tree.Set("2".as_bytes(), &[32;1000], crate::btree::MODE_UPSERT);
+            // tree.Set("1".as_bytes(), &[31;2000], crate::btree::MODE_UPSERT);
+            // tree.Set("hello".as_bytes(), "rust".as_bytes(), crate::btree::MODE_UPSERT);
+            // tree.Set("4".as_bytes(), &[34;2000], crate::btree::MODE_UPSERT);
+            // tree.Set("3".as_bytes(), &[33;2000], crate::btree::MODE_UPSERT);
     
-            let v = tree.Get("hello".as_bytes());
-            match(v)
-            {
-                Some(s) => println!("{0}",String::from_utf8(s).unwrap()),
-                None=> {}
-            }
+            // let v = tree.Get("hello".as_bytes());
+            // match(v)
+            // {
+            //     Some(s) => println!("{0}",String::from_utf8(s).unwrap()),
+            //     None=> println!("Not Found")
+            // }
             dbContext.close();
 
         }

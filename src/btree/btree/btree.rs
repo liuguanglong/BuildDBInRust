@@ -256,39 +256,41 @@ impl <'a> BTree <'a>{
             {
                     let ptr1 = self.context.add(n1.unwrap());
                     self.context.set_root(ptr1);
+                    _ = self.context.del(oldRootPtr);
+
                     return;
             }
                 
-                let mut root = BNode::new(crate::btree::BTREE_PAGE_SIZE);
-                root.set_header(crate::btree::BNODE_NODE, count);
+            let mut root = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+            root.set_header(crate::btree::BNODE_NODE, count);
 
-                let ptr1 = self.context.add(n1.unwrap());
-                let node1 = self.context.get(ptr1).unwrap();
-                let node1key = node1.get_key(0);
-                root.node_append_kv(0, ptr1, node1key, &[0;1]);
+            let ptr1 = self.context.add(n1.unwrap());
+            let node1 = self.context.get(ptr1).unwrap();
+            let node1key = node1.get_key(0);
+            root.node_append_kv(0, ptr1, node1key, &[0;1]);
 
-                if n2.is_none() == false
-                {
-                    let ptr = self.context.add(n2.unwrap());
-                    let node = self.context.get(ptr).unwrap();
-                    let nodekey = node.get_key(0);
-                    root.node_append_kv(1, ptr, nodekey, &[0;1]);
+            if n2.is_none() == false
+            {
+                let ptr = self.context.add(n2.unwrap());
+                let node = self.context.get(ptr).unwrap();
+                let nodekey = node.get_key(0);
+                root.node_append_kv(1, ptr, nodekey, &[0;1]);
 
-                }
+            }
 
-                if n3.is_none() == false
-                {
-                    let ptr = self.context.add(n3.unwrap());
-                    let node = self.context.get(ptr).unwrap();
-                    let nodekey = node.get_key(0);
-                    root.node_append_kv(2, ptr, nodekey, &[0;1]);    
-                }
-                let rootPtr = self.context.add(root);
-                self.context.set_root(rootPtr);
+            if n3.is_none() == false
+            {
+                let ptr = self.context.add(n3.unwrap());
+                let node = self.context.get(ptr).unwrap();
+                let nodekey = node.get_key(0);
+                root.node_append_kv(2, ptr, nodekey, &[0;1]);    
+            }
+            let rootPtr = self.context.add(root);
+            self.context.set_root(rootPtr);
             },
             None => {}
         }
-            _ = self.context.del(oldRootPtr);
+        _ = self.context.del(oldRootPtr);
     }
 
 
@@ -321,42 +323,44 @@ impl <'a> BTree <'a>{
         {
             Some(node) => {
             let (count,n1,n2,n3) = node.nodeSplit3();
-            if(count == 1)
+            if count == 1
             {
                     let ptr1 = self.context.add(n1.unwrap());
                     self.context.set_root(ptr1);
+                    _ = self.context.del(oldRootPtr);
+
                     return;
             }
                 
-                let mut root = BNode::new(crate::btree::BTREE_PAGE_SIZE);
-                root.set_header(crate::btree::BNODE_NODE, count);
+            let mut root = BNode::new(crate::btree::BTREE_PAGE_SIZE);
+            root.set_header(crate::btree::BNODE_NODE, count);
 
-                let ptr1 = self.context.add(n1.unwrap());
-                let node1 = self.context.get(ptr1).unwrap();
-                let node1key = node1.get_key(0);
-                root.node_append_kv(0, ptr1, node1key, &[0;1]);
+            let ptr1 = self.context.add(n1.unwrap());
+            let node1 = self.context.get(ptr1).unwrap();
+            let node1key = node1.get_key(0);
+            root.node_append_kv(0, ptr1, node1key, &[0;1]);
 
-                if n2.is_none() == false
-                {
-                    let ptr = self.context.add(n2.unwrap());
-                    let node = self.context.get(ptr).unwrap();
-                    let nodekey = node.get_key(0);
-                    root.node_append_kv(1, ptr, nodekey, &[0;1]);
-                }
+            if n2.is_none() == false
+            {
+                let ptr = self.context.add(n2.unwrap());
+                let node = self.context.get(ptr).unwrap();
+                let nodekey = node.get_key(0);
+                root.node_append_kv(1, ptr, nodekey, &[0;1]);
+            }
 
-                if n3.is_none() == false
-                {
-                    let ptr = self.context.add(n3.unwrap());
-                    let node = self.context.get(ptr).unwrap();
-                    let nodekey = node.get_key(0);
-                    root.node_append_kv(2, ptr, nodekey, &[0;1]);    
-                }
-                let rootPtr = self.context.add(root);
-                self.context.set_root(rootPtr);
+            if n3.is_none() == false
+            {
+                let ptr = self.context.add(n3.unwrap());
+                let node = self.context.get(ptr).unwrap();
+                let nodekey = node.get_key(0);
+                root.node_append_kv(2, ptr, nodekey, &[0;1]);    
+            }
+            let rootPtr = self.context.add(root);
+            self.context.set_root(rootPtr);
             },
             None => {}
         }
-            _ = self.context.del(oldRootPtr);
+        _ = self.context.del(oldRootPtr);
     }
 
     // Search a key from the tree
@@ -367,7 +371,8 @@ impl <'a> BTree <'a>{
         match  treenode.btype() {
             crate::btree::BNODE_LEAF => {
                 // leaf, node.getKey(idx) <= key
-                let comp = crate::btree::util::compare_arrays(key, treenode.get_key(idx));
+                let key1 = treenode.get_key(idx);
+                let comp = crate::btree::util::compare_arrays(key, key1);
                 if  comp == 0 {
                     return Some(treenode.get_val(idx).to_vec());
                 } else {
@@ -765,7 +770,7 @@ impl <'a> BTree <'a>{
             None => {}
         }
         //std.debug.print("Split Count:{d}", .{subNodes.Count});
-        _ = self.context.del(kptr);
+        //_ = self.context.del(kptr);
     }
 
     // part of the treeInsert(): KV insertion to an internal node
@@ -773,7 +778,6 @@ impl <'a> BTree <'a>{
         //get and deallocate the kid node
         let kptr = oldNode.get_ptr(idx as usize);
         let mut knode = self.context.get(kptr).unwrap();
-        _ = self.context.del(kptr);
 
         let insertNode = self.treeInsertEx(&knode, request);
         match insertNode{            
@@ -814,6 +818,7 @@ impl <'a> BTree <'a>{
             },
             None => {}
         }
+        //_ = self.context.del(kptr);
         //std.debug.print("Split Count:{d}", .{subNodes.Count});
     }
 }
