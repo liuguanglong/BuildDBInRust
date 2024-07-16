@@ -149,18 +149,19 @@ impl KVContext {
     }
 }
 
-struct Shared<T> {
+#[derive(Debug)]
+pub struct Shared<T> {
     inner: Arc<Mutex<T>>,
 }
 
 impl<T> Shared<T> {
-    fn new(data: T) -> Self {
+    pub fn new(data: T) -> Self {
         Shared {
             inner: Arc::new(Mutex::new(data)),
         }
     }
 
-    fn clone(&self) -> Self {
+    pub fn clone(&self) -> Self {
         Shared {
             inner: Arc::clone(&self.inner),
         }
