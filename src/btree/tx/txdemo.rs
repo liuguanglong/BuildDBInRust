@@ -153,11 +153,12 @@ mod tests {
     fn read(i:u64,ct:Shared<KVContext>)
     {
         let mut rng = rand::thread_rng();
-        let random_number: u64 = rng.gen_range(1..20);
-        thread::sleep(Duration::from_millis(random_number));
+        let random_number: u64 = rng.gen_range(10..20);
         let mut ct1 = ct.lock().unwrap();
         let reader = ct1.beginread();
         drop(ct1);
+        println!("Begin Read Value:{}",i); 
+        thread::sleep(Duration::from_millis(random_number));
 
         let t = reader.Get(format!("{}", i).as_bytes());
         if let Some(t) = t
@@ -168,6 +169,7 @@ mod tests {
             println!("Ret {}:None",i);
         }
 
+        println!("End Read Value:{}",i); 
         let mut ct1 = ct.lock().unwrap();
         ct1.endread(&reader);
         drop(ct1);
@@ -176,7 +178,7 @@ mod tests {
     fn write(i:u64,ct:Shared<KVContext>)
     {
         let mut rng = rand::thread_rng();
-        let random_number: u64 = rng.gen_range(1..10);
+        let random_number: u64 = rng.gen_range(1..5);
 
         let mut ct1 = ct.lock().unwrap();
         let mut tx = ct1.begintx();

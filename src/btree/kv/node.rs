@@ -8,6 +8,7 @@ use crate::btree::BNODE_LEAF;
 
 use super::nodeinterface::BNodeFreeListInterface;
 use super::BNODE_FREE_LIST;
+use super::BTREE_PAGE_SIZE;
 
 pub struct BNode {
     data: Box<[u8]>,
@@ -135,6 +136,10 @@ impl BNodeWriteInterface for BNode{
         {
             self.data[i] = item;
         }
+    }
+
+    fn copy_Data(&mut self, data:&Vec<u8>,offset:usize,length:usize){
+        self.data[0..BTREE_PAGE_SIZE].copy_from_slice(&data[offset..offset+length]);
     }
 
     fn copy_Content(&mut self,ptr :*mut u8,offset:usize,length:usize){
