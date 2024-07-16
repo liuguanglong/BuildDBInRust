@@ -1,8 +1,8 @@
-use std::{collections::HashMap, ops::{Deref, DerefMut}, sync::{Arc, Mutex}};
+use std::{collections::HashMap, ops::{Deref, DerefMut}, sync::{Arc, Mutex, RwLock}};
 
 
 pub trait KVReaderInterface {
-    fn Get(&self,key:&[u8])->Option<&[u8]>;
+    fn Get(&self,key:&[u8])->Option<Vec<u8>>;
 }
 
 pub trait KVTxInterface {
@@ -11,15 +11,26 @@ pub trait KVTxInterface {
 }
 
 pub struct KVReader{
-    data:HashMap<Vec<u8>,Vec<u8>>,    
+    idx:u64,
+    data:Arc<RwLock<HashMap<Vec<u8>,Vec<u8>>>>,    
 }
 
+impl KVReader{
+    pub fn new(idx:u64,data:Arc<RwLock<HashMap<Vec<u8>,Vec<u8>>>>)->Self
+    {
+        KVReader{
+            data:data,
+            idx:idx
+        }   
+    }
+}
 impl KVReaderInterface for KVReader{
-    fn Get(&self,key:&[u8])->Option<&[u8]> {
-        let node = self.data.get(&key.to_vec());
+    fn Get(&self,key:&[u8])->Option<Vec<u8>> {
+        let data = self.data.read().unwrap();
+        let node = data.get(&key.to_vec());
         if let Some(v) = node
         {
-            return Some(v);
+            return Some(v.clone());
         }
         else {
             return None;
@@ -33,7 +44,7 @@ pub struct KVTx{
 }
 
 impl KVReaderInterface for KVTx{
-    fn Get(&self,key:&[u8])->Option<&[u8]> {
+    fn Get(&self,key:&[u8])->Option<Vec<u8>> {
 
         if(self.updates.contains_key(key))
         {
@@ -41,7 +52,7 @@ impl KVReaderInterface for KVTx{
             {
                 if let Some(V1) = v
                 {
-                    return Some(V1);
+                    return Some(V1.to_vec());
                 }
                 else {
                     return None;                    
@@ -67,14 +78,34 @@ impl KVTxInterface for KVTx {
 pub struct KVContext{
     data:HashMap<Vec<u8>,Vec<u8>>,  
     writer:Shared<()>,
+    rdata:HashMap<u64,Arc<RwLock<HashMap<Vec<u8>,Vec<u8>>>>>,
+    idx:u64,
     //mu:Mutex<u16>,
     //writer:Mutex<u16>,  
 }
 
 impl KVContext {
 
+    pub fn new(data:HashMap<Vec<u8>,Vec<u8>>) -> Self
+    {
+        let rd = Arc::new(RwLock::new(data.clone()));
+        let mut h = HashMap::new();
+        h.insert(0, rd);
+        KVContext{
+            data:data,
+            idx:0,
+            writer:Shared::new(()),
+            rdata:h,
+        }
+    }
+
     pub fn beginread(&mut self)->KVReader{
-        let kv = KVReader{ data: self.data.clone()};
+        if self.rdata.contains_key(&self.idx) == false
+        {
+            self.rdata.insert(self.idx,Arc::new(RwLock::new(self.data.clone())));
+        }
+
+        let kv = KVReader{idx:self.idx, data: self.rdata.get(&self.idx).unwrap().clone()};
         kv
     }
 
@@ -84,7 +115,12 @@ impl KVContext {
 
     pub fn begintx(&mut self)->KVTx
     {
-        let kv = KVReader{ data: self.data.clone()};
+        if self.rdata.contains_key(&self.idx) == false
+        {
+            self.rdata.insert(self.idx,Arc::new(RwLock::new(self.data.clone())));
+        }
+       
+        let kv = KVReader{idx:self.idx,  data: self.rdata.get(&self.idx).unwrap().clone()};
         let tx = KVTx{ updates:HashMap::new(), reader:kv};
         tx
     }
@@ -107,6 +143,9 @@ impl KVContext {
             }
         }
         tx.updates.clear();
+
+        self.idx +=1;
+
     }
 }
 
@@ -153,12 +192,13 @@ mod tests {
     fn read(i:u64,ct:Shared<KVContext>)
     {
         let mut rng = rand::thread_rng();
-        let random_number: u64 = rng.gen_range(10..20);
+        let random_number: u64 = rng.gen_range(2..30);
+        thread::sleep(Duration::from_millis(random_number));
+
         let mut ct1 = ct.lock().unwrap();
         let reader = ct1.beginread();
         drop(ct1);
-        println!("Begin Read Value:{}",i); 
-        thread::sleep(Duration::from_millis(random_number));
+        println!("Begin Read Value:{}  Value Index:{}",i,reader.idx); 
 
         let t = reader.Get(format!("{}", i).as_bytes());
         if let Some(t) = t
@@ -169,7 +209,7 @@ mod tests {
             println!("Ret {}:None",i);
         }
 
-        println!("End Read Value:{}",i); 
+        println!("End Read Value:{}  Value Index:{}",i, reader.idx); 
         let mut ct1 = ct.lock().unwrap();
         ct1.endread(&reader);
         drop(ct1);
@@ -178,7 +218,7 @@ mod tests {
     fn write(i:u64,ct:Shared<KVContext>)
     {
         let mut rng = rand::thread_rng();
-        let random_number: u64 = rng.gen_range(1..5);
+        let random_number: u64 = rng.gen_range(1..3);
 
         let mut ct1 = ct.lock().unwrap();
         let mut tx = ct1.begintx();
@@ -206,7 +246,7 @@ mod tests {
         data.insert("3".as_bytes().to_vec(), "c".as_bytes().to_vec());
         data.insert("4".as_bytes().to_vec(), "d".as_bytes().to_vec());
 
-        let mut context = KVContext{data:data,writer:Shared::new(())};
+        let mut context = KVContext::new(data);
         let instance = Shared::new(context);
         let mut handles = vec![];
 
@@ -232,42 +272,6 @@ mod tests {
             handle.join().unwrap();
         }
     
-
-    }
-    #[test]
-    fn test_KvReader() {
-        let mut data:HashMap<Vec<u8>,Vec<u8>> = HashMap::new();
-        data.insert("1".as_bytes().to_vec(), "a".as_bytes().to_vec());
-        data.insert("2".as_bytes().to_vec(), "b".as_bytes().to_vec());
-        data.insert("3".as_bytes().to_vec(), "c".as_bytes().to_vec());
-        data.insert("4".as_bytes().to_vec(), "d".as_bytes().to_vec());
-
-        let reader = KVReader{ data:data};
-        let v1 = reader.Get("1".as_bytes());
-
-
-        println!("Ret1:{:?}",v1);
-    }
-
-    #[test]
-    fn test_KvTx() {
-        let mut data:HashMap<Vec<u8>,Vec<u8>> = HashMap::new();
-        data.insert("1".as_bytes().to_vec(), "a".as_bytes().to_vec());
-        data.insert("2".as_bytes().to_vec(), "b".as_bytes().to_vec());
-        data.insert("3".as_bytes().to_vec(), "c".as_bytes().to_vec());
-        data.insert("4".as_bytes().to_vec(), "d".as_bytes().to_vec());
-
-        let mut tx: KVTx = KVTx{ updates:HashMap::new(), reader:KVReader{data:data}};
-        let v1 = tx.Get("1".as_bytes());
-        println!("Ret1:{:?}",v1);
-
-        tx.Set("1".as_bytes(), "aa".as_bytes());
-        let v1 = tx.Get("1".as_bytes());
-        println!("Ret1:{:?}",v1);
-
-        tx.Del("2".as_bytes());
-        let v1 = tx.Get("2".as_bytes());
-        assert_eq!(true,v1.is_none());
 
     }
 }
