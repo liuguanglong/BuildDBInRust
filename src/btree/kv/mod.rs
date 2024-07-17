@@ -47,4 +47,5 @@ pub const BTREE_PAGE_SIZE:usize = 4096;
 pub const BNODE_FREE_LIST: u16 = 3;
 pub const FREE_LIST_HEADER: usize = 4 + 8 + 8;
 pub const FREE_LIST_CAP: usize = (BTREE_PAGE_SIZE - FREE_LIST_HEADER) / 8;
+pub const FREE_LIST_CAP_WITH_VERSION: usize = (BTREE_PAGE_SIZE - FREE_LIST_HEADER) / 16;
 pub const DB_SIG:&[u8] = "BuildYourOwnDB22".as_bytes();

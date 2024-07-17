@@ -49,6 +49,8 @@ pub trait BNodeFreeListInterface{
     fn flnSetPtr(&mut self, idx: usize, value: u64);
     fn flnSetTotal(&mut self, value: u64);
     fn flnGetTotal(&self)->u64;
+    fn flnSetPtrWithVersion(&mut self, idx: usize, value: u64, version: u64);
+    fn flnPtrWithVersion(&self, idx: usize)->(u64,u64);
 }
 
 pub trait FreeListInterface{

@@ -389,6 +389,21 @@ impl BNodeFreeListInterface for BNode
         self.data[pos..pos+8].copy_from_slice(&value.to_le_bytes());
     }
 
+    fn flnSetPtrWithVersion(&mut self, idx: usize, value: u64, version: u64)
+    {
+        let pos: usize = FREE_LIST_HEADER + 16 * idx;
+        self.data[pos..pos+8].copy_from_slice(&value.to_le_bytes());
+        self.data[pos+8..pos+16].copy_from_slice(&version.to_le_bytes());
+
+    }
+    fn flnPtrWithVersion(&self, idx: usize)->(u64,u64){
+        let pos:usize = FREE_LIST_HEADER + 16 * idx;    
+        return (u64::from_le_bytes(self.data[pos..pos+8].try_into().unwrap()),
+            u64::from_le_bytes(self.data[pos+8..pos+16].try_into().unwrap())
+        );
+    }
+
+
     fn flnSetTotal(&mut self, value: u64) {
         self.data[4..4+8].copy_from_slice(&value.to_le_bytes());
     }

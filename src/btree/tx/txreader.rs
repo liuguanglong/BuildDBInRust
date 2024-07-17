@@ -1,17 +1,21 @@
+use std::sync::{Arc, RwLock, RwLockReadGuard};
+
 use crate::btree::{kv::{node::BNode, nodeinterface::{BNodeReadInterface, BNodeWriteInterface}}, scan::{biter::BIter, comp::OP_CMP}, BTREE_PAGE_SIZE};
-use super::{txbiter::TxBIter, txinterface::{TxReadContext, TxReaderInterface}};
+use super::{txbiter::TxBIter, txinterface::{TxReadContext, TxReaderInterface}, winmmap::Mmap};
 
 pub struct TxReader{
-    data:Vec<u8>,
+    data:Arc<RwLock<Mmap>>,
     root: u64,
     version:u64,
     index:u64,
+    len:usize
 }
 
 impl TxReader{
-    pub fn new(data:Vec<u8>) -> TxReader{
+    pub fn new(data:Arc<RwLock<Mmap>>,len:usize) -> TxReader{
         TxReader{
             data:data,
+            len:len,
             root:0,
             version:0,
             index:0,
@@ -115,10 +119,15 @@ impl TxReadContext for TxReader{
 
     fn get(&self,key:u64) -> Option<BNode>{
         let offset = key as usize * BTREE_PAGE_SIZE;
-        assert!(offset + BTREE_PAGE_SIZE < self.data.len());
+        assert!(offset + BTREE_PAGE_SIZE < self.len);
 
+        let mut mmap = self.data.read().unwrap();
         let mut newNode = BNode::new(BTREE_PAGE_SIZE);
-        newNode.copy_Data(&self.data,offset,BTREE_PAGE_SIZE);
+        unsafe 
+        {
+            newNode.copy_Content(mmap.ptr, offset, BTREE_PAGE_SIZE);
+        }
+        //newNode.copy_Data(&self.data,offset,BTREE_PAGE_SIZE);
         Some(newNode)
     }
 }
