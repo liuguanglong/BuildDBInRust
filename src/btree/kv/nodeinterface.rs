@@ -43,6 +43,7 @@ pub trait BNodeOperationInterface{
 
 pub trait BNodeFreeListInterface{
     fn flnSetHeader(&mut self, keynumber: u16, next: u64);
+    fn flnSetNext(&mut self, next: u64);
     fn flnSize(&self)->u16;
     fn flnNext(&self)->u64;
     fn flnPtr(&self, idx: usize)->u64;

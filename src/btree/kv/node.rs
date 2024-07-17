@@ -370,6 +370,11 @@ impl BNodeFreeListInterface for BNode
         self.data[pos..pos+8].copy_from_slice(&next.to_le_bytes());
     }
 
+    fn flnSetNext(&mut self, next: u64) {
+        let pos: usize = (HEADER + 8) as usize;
+        self.data[pos..pos+8].copy_from_slice(&next.to_le_bytes());
+    }
+
     fn flnSize(&self)->u16 {
         return u16::from_le_bytes(self.data[2..4].try_into().unwrap());
     }
