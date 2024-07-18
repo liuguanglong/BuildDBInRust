@@ -1,11 +1,11 @@
 use std::{collections::HashMap, sync::{Arc, RwLock}};
-use crate::btree::{kv::{node::BNode, nodeinterface::BNodeFreeListInterface, ContextError, FREE_LIST_CAP_WITH_VERSION}, BTREE_PAGE_SIZE};
+use crate::btree::{kv::{node::BNode, nodeinterface::{BNodeFreeListInterface, BNodeWriteInterface}, ContextError, FREE_LIST_CAP_WITH_VERSION}, BTREE_PAGE_SIZE};
 use super::{txinterface::TxReadContext, txreader::TxReader, winmmap::Mmap};
 
 pub struct FreeListData{
     head: u64, //head of freeelist
     // cached pointers to list nodes for accessing both ends.
-    nodes:Vec<u64>,   //from the tail to the head
+    nodes:Vec<u64>,   //from the tail to the head.  tail is the oldese node|head is the newest node
     // cached total number of items; stored in the head node.
     total:usize,
     // cached number of discarded items in the tail node.
@@ -31,6 +31,7 @@ pub struct TxFreeList{
 
     // for each transaction
     freed: Vec<u64>, // pages that will be added to the free list
+    freenode:Option<u64>, //Save tmp removed freelist node
     version: u64,    // current version
     minReader: u64,  // minimum reader version
 }
@@ -44,6 +45,7 @@ impl TxFreeList{
             minReader:minReader,
             updates: HashMap::new(),
             freed: Vec::new(),
+            freenode: None,
         }
     }
 }
@@ -75,7 +77,14 @@ impl Tx{
     }
 
     fn PopFreeNode(&mut self)->u64{
-        if self.freelist.data.total == 0
+
+        if let Some(n) = self.freelist.freenode
+        {
+            self.freelist.data.total -= 1;
+            return n;
+        }
+        
+        if self.freelist.data.total == 0 || self.freelist.data.head == 0
         {
             return 0;
         }
@@ -93,129 +102,57 @@ impl Tx{
         self.freelist.data.total -= 1;
 
         // discard the empty node and move to the next node
-        if self.freelist.data.offset == FREE_LIST_CAP_WITH_VERSION 
+        if self.freelist.data.offset == FREE_LIST_CAP_WITH_VERSION
         {
-            let emptynode = self.freelist.data.nodes.remove(0);
-            self.freelist.freed.push(emptynode);
+            let ptrNode = self.freelist.data.nodes.remove(0);
+            self.freelist.freenode = Some(ptrNode);
+            self.freelist.data.total += 1;
+
             self.freelist.data.offset = 0;
-            self.freelist.data.head = self.freelist.data.nodes[0];
+            if self.freelist.data.nodes.len() != 0 
+            {
+                self.freelist.data.head = self.freelist.data.nodes[0];
+            }
+            else {
+                self.freelist.data.head = 0;
+            }
         }
 
         ptr
     }
 
-    // add new pointers to the head and finalize the update
-    fn UpdateFreeList(&mut self) -> Result<(),ContextError>{
+    fn updatefreelist(&mut self) -> Result<(),ContextError>{
         if self.freelist.data.offset == 0 && self.freelist.freed.len() == 0
         {
             return Ok(());
         }
 
-        // prepare to construct the new list
-        let mut total = self.freelist.data.total;
-        let mut count = self.freelist.data.offset;
-        let mut listReuse:Vec<u64> = Vec::new();
-        let mut listFreeNode:Vec<u64> = Vec::new();
-        let mut listOldFreeNode:Vec<u64> = Vec::new();
+        //update head
+        let mut i:usize = 0;
+        
+        let ptrTail = self.freelist.data.nodes.last().unwrap().clone();
+        let mut tail = self.get(ptrTail).unwrap();
 
-        for i in 0..self.freelist.freed.len() 
+        let mut idx = tail.flnSize() as usize;
+
+        while  i< self.freelist.freed.len() && idx < FREE_LIST_CAP_WITH_VERSION 
         {
-            listFreeNode.push(self.freelist.freed[i]);
+            let ptr = self.freelist.freed.pop().unwrap();
+            tail.flnSetPtrWithVersion( idx, ptr,self.freelist.version);
+            i += 1;
+            idx += 1;
         }
+        tail.flnSetHeader(idx as u16, 0);
+        self.useNode(ptrTail,&tail);
 
-        while self.freelist.data.head != 0 && listReuse.len() * FREE_LIST_CAP_WITH_VERSION < listFreeNode.len() 
+
+        while i < self.freelist.freed.len()
         {
-            let node = self.get(self.freelist.data.head);
-            if let None = node 
-            {
-                return Err(ContextError::RootNotFound);
-            };
-
-            listFreeNode.push(self.freelist.data.head);
-            //std.debug.print("Head Ptr:{d}  Size {d}\n", .{ self.head, flnSize(node1) });
-            let node = node.unwrap();
-
-            // remove some pointers
-            let mut remain = node.flnSize() as usize - count;
-            count = 0;
-            let mut idx:usize = 0;
-            // reuse pointers from the free list itself
-            while remain > 0 &&idx < remain && (listReuse.len() - 1) * FREE_LIST_CAP_WITH_VERSION < listFreeNode.len() as usize
-            {
-                //std.debug.print("Handle Remain.\n", .{});\
-                let (ptr,version) = node.flnPtrWithVersion(remain as usize);
-                if Self::versionbefore(version,self.freelist.minReader) == false
-                {
-                    break;
-                }
-                idx += 1;
-                listReuse.push(node.flnPtr(idx + self.freelist.data.offset as usize));
-            }
-
-            // move the node into the `old freed` list
-            for idx in idx..remain as usize
-            {
-                //std.debug.print("Handle Freed. {d}\n", .{idx});
-                listOldFreeNode.push(node.flnPtr(self.freelist.data.offset + idx));
-            }
-
-            total -= node.flnSize() as usize;
-            self.freelist.data.head = node.flnNext();
-        }
-
-        let newTotal = total + listFreeNode.len() as usize + listOldFreeNode.len() as usize;
-        assert!(listReuse.len() * FREE_LIST_CAP_WITH_VERSION >= listReuse.len() || self.freelist.data.head == 0);
-        self.flPush(&mut listFreeNode, &mut listReuse,&mut listOldFreeNode, newTotal);
-
-        // let mut headnode = self.get(self.freelist.data.head);
-        // if let Some( mut h) = headnode{
-        //     h.flnSetTotal(newTotal);  
-        //     self.useNode(self.freehead, &h);          
-        // } 
-
-        Ok(())
-    }
-
-    fn flPush(&mut self, listFreeNode: &mut Vec<u64>, listReuse:  &mut Vec<u64> , listOldFreeNode:& mut Vec<u64>, newTotal: usize) {
-
-        //Set Head
-        if(listOldFreeNode.len() > 0)
-        {
-            assert!(listOldFreeNode.len() < FREE_LIST_CAP_WITH_VERSION);
-            let mut newNode = BNode::new(BTREE_PAGE_SIZE);
-            newNode.flnSetHeader(listOldFreeNode.len() as u16, self.freelist.data.head);
-            newNode.flnSetTotal(newTotal as u64);
-
-            for idx in 0..listOldFreeNode.len() 
-            {
-                let ptr = listOldFreeNode.pop().unwrap();
-                newNode.flnSetPtrWithVersion( idx, ptr,self.freelist.version);
-            }
-            if listReuse.len() > 0 
-            {
-                //reuse a pointer from the list
-                let ptrHead = listReuse.pop().unwrap();
-                self.freelist.data.head = ptrHead;
-                self.useNode(ptrHead, &newNode);
-            }  
-            else {
-                self.freelist.data.head = self.appendNode(&newNode);
-            }
-        }
-        else {
-            //Set New Total
-            let mut head = self.get(self.freelist.data.head).unwrap();
-            head.flnSetTotal(newTotal as u64);
-            self.useNode(self.freelist.data.head, &head)
-        }
-
-        //Set Tail
-        while listFreeNode.len() > 0 
-        {
+            let mut ptr = self.PopFreeNode();
             let mut newNode = BNode::new(BTREE_PAGE_SIZE);
 
             //construc new node
-            let mut size: usize = listFreeNode.len();
+            let mut size: usize = self.freelist.freed.len();
             if size > FREE_LIST_CAP_WITH_VERSION
             {
                 size = FREE_LIST_CAP_WITH_VERSION;
@@ -224,35 +161,69 @@ impl Tx{
             newNode.flnSetHeader(size as u16, 0);
             for idx in 0..size 
             {
-                let ptr = listFreeNode.pop().unwrap();
+                let ptr = self.freelist.freed.pop().unwrap();
                 newNode.flnSetPtrWithVersion( idx, ptr,self.freelist.version);
             }
-
-            if listReuse.len() > 0 
+            if ptr != 0
             {
-                //reuse a pointer from the list
-                let ptrNewTail = listReuse.pop().unwrap();
-                //std.debug.print("Reuse Ptr {d} \n", .{self.head});['']
-                self.useNode(ptrNewTail, &newNode);
+                self.useNode(ptr, &newNode);
+            }
+            else {
+                ptr = self.appendNode(&newNode);
+            }
 
-                let ptrTail = self.freelist.data.nodes.last().unwrap().clone();
-                let mut tail = self.get(ptrTail).unwrap();
-                tail.flnSetNext(ptrNewTail);
-                self.useNode(ptrTail,&tail);
+            let ptrTail = self.freelist.data.nodes.last().unwrap().clone();
+            let mut tail = self.get(ptrTail).unwrap();
+            tail.flnSetNext(ptr);
+            self.useNode(ptrTail,&tail);
 
-            } else {
-                let ptrNewTail = self.appendNode(&newNode);
-                
-                let ptrTail = self.freelist.data.nodes.last().unwrap().clone();
-                let mut tail = self.get(ptrTail).unwrap();
-                tail.flnSetNext(ptrNewTail);
+            self.freelist.data.nodes.push(ptr);
+            i -= size;
+        }
+       
+        //update freenode
+        if let Some(n) = self.freelist.freenode {
+            let ptrTail = self.freelist.data.nodes.last().unwrap().clone();
+            let mut tail = self.get(ptrTail).unwrap();
+    
+            let offset = tail.flnSize() as usize;
+            if  offset == FREE_LIST_CAP_WITH_VERSION
+            {
+                let mut newNode = BNode::new(BTREE_PAGE_SIZE);
+                newNode.flnSetHeader(0,0);
+                let ptr = self.appendNode(&newNode);
+
+                tail.flnSetNext(ptr);
                 self.useNode(ptrTail,&tail);
+                self.freelist.data.nodes.push(ptr);
+            }
+            else {
+                tail.flnSetPtrWithVersion( offset as usize, n,self.freelist.version);    
+                tail.flnSetHeader((offset + 1) as u16, 0)             
             }
         }
 
-        assert!(listReuse.len() == 0);
+        //update head
+        if self.freelist.data.offset != 0
+        {
+            let ptrHead = self.freelist.data.nodes[0].clone();
+            let mut head = self.get(ptrTail).unwrap();
 
-    }
+            let mut newNode = BNode::new(BTREE_PAGE_SIZE);
+            let mut idx:usize = 0;
+
+            for i in (self.freelist.data.offset as usize)..head.flnSize() as usize
+            {
+                let (ptr,ver) = head.flnPtrWithVersion(i);
+                newNode.flnSetPtrWithVersion( idx, ptr,self.freelist.version);
+                idx += 1;
+            }
+            self.useNode(ptrHead, &newNode);
+
+        }
+
+        Ok(())
+    } 
 
 
     pub fn appendNode(&mut self, bnode: &BNode)-> u64 {
@@ -321,5 +292,21 @@ impl Tx{
     }
 }
 
+#[cfg(test)]
+mod tests {
 
+    use std::{borrow::BorrowMut, hash::Hash, sync::{Arc, RwLock}, time::Duration};
+    use rand::Rng;
+    use super::*;
+    use std::thread;
+
+    use super::*;
+
+    #[test]
+    fn test_Pop_node()
+    {   
+
+
+    }
+}
 

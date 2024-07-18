@@ -408,7 +408,6 @@ impl BNodeFreeListInterface for BNode
         );
     }
 
-
     fn flnSetTotal(&mut self, value: u64) {
         self.data[4..4+8].copy_from_slice(&value.to_le_bytes());
     }
