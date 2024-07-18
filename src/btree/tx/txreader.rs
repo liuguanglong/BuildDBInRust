@@ -121,14 +121,15 @@ impl TxReadContext for TxReader{
         let offset = key as usize * BTREE_PAGE_SIZE;
         assert!(offset + BTREE_PAGE_SIZE < self.len);
 
-        let mut mmap = self.data.read().unwrap();
-        let mut newNode = BNode::new(BTREE_PAGE_SIZE);
-        unsafe 
-        {
+        if let Ok(mmap) = self.data.read(){
+            let mut newNode = BNode::new(BTREE_PAGE_SIZE);
             newNode.copy_Content(mmap.ptr, offset, BTREE_PAGE_SIZE);
+            drop(mmap);
+            //newNode.copy_Data(&self.data,offset,BTREE_PAGE_SIZE);
+            return Some(newNode);    
         }
-        //newNode.copy_Data(&self.data,offset,BTREE_PAGE_SIZE);
-        Some(newNode)
+        println!("Get Lock Error!");
+        None
     }
 }
 

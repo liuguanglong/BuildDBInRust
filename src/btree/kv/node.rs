@@ -144,10 +144,7 @@ impl BNodeWriteInterface for BNode{
 
     fn copy_Content(&mut self,ptr :*mut u8,offset:usize,length:usize){
         unsafe {
-            for i in 0..length
-            {
-                self.data[i] = *ptr.add(i+offset);
-            }
+            std::ptr::copy_nonoverlapping(ptr, self.data.as_mut_ptr(), length);
         }
     }
 

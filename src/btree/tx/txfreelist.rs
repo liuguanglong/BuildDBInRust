@@ -58,13 +58,13 @@ pub struct Tx{
 }
 
 impl Tx{
-    pub fn new(data:Arc<RwLock<Mmap>>,len:usize,nodes:&Vec<u64>,head:u64,total:usize,offset:usize,version:u64,minReader:u64)->Self
+    pub fn new(data:Arc<RwLock<Mmap>>,pageflushed:u64,len:usize,nodes:&Vec<u64>,head:u64,total:usize,offset:usize,version:u64,minReader:u64)->Self
     {
         let mut reader = TxReader::new(data, len);
         Tx{
             reader: reader,
             freelist: TxFreeList::new(head,version,minReader),
-            pageflushed:0,
+            pageflushed:pageflushed,
             nappend:0,
         }
     }
@@ -122,6 +122,7 @@ impl Tx{
     }
 
     fn updatefreelist(&mut self) -> Result<(),ContextError>{
+
         if self.freelist.data.offset == 0 && self.freelist.freed.len() == 0
         {
             return Ok(());
@@ -130,27 +131,26 @@ impl Tx{
         //update head
         let mut i:usize = 0;
         
-        let ptrTail = self.freelist.data.nodes.last().unwrap().clone();
-        let mut tail = self.get(ptrTail).unwrap();
-
-        let mut idx = tail.flnSize() as usize;
-
-        while  i< self.freelist.freed.len() && idx < FREE_LIST_CAP_WITH_VERSION 
+        if let Some(&ptrTail) = self.freelist.data.nodes.last()
         {
-            let ptr = self.freelist.freed.pop().unwrap();
-            tail.flnSetPtrWithVersion( idx, ptr,self.freelist.version);
-            i += 1;
-            idx += 1;
+            let mut tail = self.get(ptrTail).unwrap();
+            let mut idx = tail.flnSize() as usize;
+    
+            while  i< self.freelist.freed.len() && idx < FREE_LIST_CAP_WITH_VERSION 
+            {
+                let ptr = self.freelist.freed.pop().unwrap();
+                tail.flnSetPtrWithVersion( idx, ptr,self.freelist.version);
+                i += 1;
+                idx += 1;
+            }
+            tail.flnSetHeader(idx as u16, 0);
+            self.useNode(ptrTail,&tail);
         }
-        tail.flnSetHeader(idx as u16, 0);
-        self.useNode(ptrTail,&tail);
-
 
         while i < self.freelist.freed.len()
         {
             let mut ptr = self.PopFreeNode();
             let mut newNode = BNode::new(BTREE_PAGE_SIZE);
-
             //construc new node
             let mut size: usize = self.freelist.freed.len();
             if size > FREE_LIST_CAP_WITH_VERSION
@@ -172,13 +172,19 @@ impl Tx{
                 ptr = self.appendNode(&newNode);
             }
 
-            let ptrTail = self.freelist.data.nodes.last().unwrap().clone();
-            let mut tail = self.get(ptrTail).unwrap();
-            tail.flnSetNext(ptr);
-            self.useNode(ptrTail,&tail);
-
-            self.freelist.data.nodes.push(ptr);
-            i -= size;
+            if let Some(&ptrTail) = self.freelist.data.nodes.last()
+            {
+                let mut tail = self.get(ptrTail).unwrap();
+                tail.flnSetNext(ptr);
+                self.useNode(ptrTail,&tail);
+    
+                self.freelist.data.nodes.push(ptr);
+                i -= size;
+            }
+            else {
+                self.freelist.data.nodes.push(ptr);
+                self.freelist.data.head = ptr;
+            }
         }
        
         //update freenode
@@ -207,7 +213,7 @@ impl Tx{
         if self.freelist.data.offset != 0
         {
             let ptrHead = self.freelist.data.nodes[0].clone();
-            let mut head = self.get(ptrTail).unwrap();
+            let mut head = self.get(ptrHead).unwrap();
 
             let mut newNode = BNode::new(BTREE_PAGE_SIZE);
             let mut idx:usize = 0;
@@ -219,7 +225,6 @@ impl Tx{
                 idx += 1;
             }
             self.useNode(ptrHead, &newNode);
-
         }
 
         Ok(())
@@ -240,7 +245,7 @@ impl Tx{
     fn get(&self,key:u64) -> Option<BNode>
     {
         let node = self.freelist.updates.get(&key);
-        match node
+        match &node
         {
             Some(Some(x)) => {
                 Some(x.copy())    
@@ -297,16 +302,138 @@ mod tests {
 
     use std::{borrow::BorrowMut, hash::Hash, sync::{Arc, RwLock}, time::Duration};
     use rand::Rng;
+    use crate::btree::{kv::nodeinterface::BNodeReadInterface, tx::txdemo::Shared, BNODE_NODE};
+
     use super::*;
     use std::thread;
 
     use super::*;
 
+
     #[test]
-    fn test_Pop_node()
+    fn test_use_node()
     {   
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*11];
+        let mut tx = prepaircase_nonefreelist(&mut data);
+       
+        let mut n: BNode = tx.get(2).unwrap();
+        n.set_header(BNODE_NODE, 1);
+        n.node_append_kv(0, 0, "Key1".as_bytes(), "Val1".as_bytes());
+        tx.useNode(2, &n);
 
+        assert_eq!(1,tx.freelist.updates.len());
+        let n1 = tx.get(2).unwrap();
+        n1.print();
 
+        assert_eq!(1,n1.nkeys());
+        let v: &[u8] = n1.get_val(0);
+        assert_eq!("Val1".as_bytes(),v);
+        //tx.freelist.freed.push(0);
+        //tx.updatefreelist();
+
+    }
+
+    fn prepaircase_nonefreelist(data:&mut Vec<u8>)->Tx
+    {
+        println!("Before get11");
+        //master
+        let mut master = BNode::new(BTREE_PAGE_SIZE);
+
+        //node from 1..10
+        let mut nodes:Vec<BNode> = Vec::new();
+        for i in 1..11
+        {
+            let mut n = BNode::new(BTREE_PAGE_SIZE);
+            n.set_header(BNODE_NODE,0);
+            nodes.push(n);
+            //println!("Node Key:{i}");
+        }
+
+        data[0..BTREE_PAGE_SIZE].copy_from_slice(master.data());
+
+        for i in 0..nodes.len()
+        {
+            data[(i+1)*BTREE_PAGE_SIZE..(i+2)*BTREE_PAGE_SIZE].copy_from_slice(nodes[i].data());
+        }
+
+        println!("Before get");
+        // 获取 Vec<u8> 的指针
+        let data_ptr: *mut u8 = data.as_mut_ptr();
+        let mmap = Mmap { ptr: data_ptr, writer: Shared::new(())};
+        let mmap =  Arc::new(RwLock::new(mmap));
+        let mut nodes = Vec::new();
+        println!("End get");
+        let tx = Tx::new(mmap,11,BTREE_PAGE_SIZE * 15, &nodes,0,8,0,1,1);
+
+        tx
+
+    }
+
+    fn prepairnormalcase(data:&mut Vec<u8>)->Tx
+    {
+        //master
+        let mut master = BNode::new(BTREE_PAGE_SIZE);
+
+        //node from 1..10
+        let mut nodes:Vec<BNode> = Vec::new();
+        for i in 1..11
+        {
+            let mut n = BNode::new(BTREE_PAGE_SIZE);
+            n.set_header(BNODE_NODE,0);
+            nodes.push(n);
+            //println!("Node Key:{i}");
+        }
+
+        //free node from 11..14,free node 23,45,67,89
+        let mut freenodes:Vec<BNode> = Vec::new();
+        for i in 1..5
+        {
+            let mut n = BNode::new(BTREE_PAGE_SIZE);
+            if( i == 4)
+            {
+                n.flnSetHeader(2, 0);
+            }
+            else
+            {
+                n.flnSetHeader(2, 10 + i+1);
+            }
+            for j in 0..2
+            {
+                n.flnSetPtrWithVersion(j,(2 *i + j as u64) as u64 , i);
+                //println!("Free Node SetPtr:{} {}",10 + i, 2 *i + j as u64);
+            }
+            //println!("Free Node Key:{}  Next:{}",10 + i, n.flnNext());
+            if i== 1
+            {
+                n.flnSetTotal(8);
+            }
+            freenodes.push(n);
+        }
+
+        //let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*15];
+        data[0..BTREE_PAGE_SIZE].copy_from_slice(master.data());
+        for i in 0..nodes.len()
+        {
+            data[ (i+1)*BTREE_PAGE_SIZE..(i+2)*BTREE_PAGE_SIZE].copy_from_slice(nodes[i].data());
+        }
+        for i in 0..freenodes.len()
+        {
+            data[ (i+11)*BTREE_PAGE_SIZE..(i+12)*BTREE_PAGE_SIZE].copy_from_slice(freenodes[i].data());
+        }
+
+        // 获取 Vec<u8> 的指针
+        let data_ptr: *mut u8 = data.as_mut_ptr();
+        let mmap = Mmap { ptr: data_ptr, writer: Shared::new(())};
+        let mmap =  Arc::new(RwLock::new(mmap));
+        let mut nodes = Vec::new();
+        nodes.push(11);
+        nodes.push(12);
+        nodes.push(13);
+        nodes.push(14);
+
+        let tx = Tx::new(mmap,15,BTREE_PAGE_SIZE * 15, &nodes,11,8,0,1,1);
+
+        tx
     }
 }
 

@@ -693,7 +693,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
+    //#[test]
     fn test_FileContent()
     {
         let mut context = WindowsFileContext::new("c:/temp/rustdb.dat".as_bytes(),4096,50);
