@@ -31,7 +31,6 @@ pub struct TxFreeList{
 
     // for each transaction
     freed: Vec<u64>, // pages that will be added to the free list
-    freenode:Option<u64>, //Save tmp removed freelist node
     version: u64,    // current version
     minReader: u64,  // minimum reader version
 }
@@ -45,7 +44,6 @@ impl TxFreeList{
             minReader:minReader,
             updates: HashMap::new(),
             freed: Vec::new(),
-            freenode: None,
         }
     }
 }
@@ -77,16 +75,26 @@ impl Tx{
     }
 
     fn PopFreeNode(&mut self)->u64{
-
-        if let Some(n) = self.freelist.freenode
-        {
-            self.freelist.data.total -= 1;
-            return n;
-        }
         
         if self.freelist.data.total == 0 || self.freelist.data.head == 0
         {
             return 0;
+        }
+
+        if  self.freelist.data.offset == FREE_LIST_CAP_WITH_VERSION
+        {
+            let ptrNode = self.freelist.data.nodes.remove(0);
+            self.freelist.data.total -= 1;
+
+            self.freelist.data.offset = 0;
+            if self.freelist.data.nodes.len() != 0 
+            {
+                self.freelist.data.head = self.freelist.data.nodes[0];
+            }
+            else {
+                self.freelist.data.head = 0;
+            }
+            return ptrNode;
         }
 
         // remove one item from the tail
@@ -101,23 +109,6 @@ impl Tx{
         self.freelist.data.offset += 1;
         self.freelist.data.total -= 1;
 
-        // discard the empty node and move to the next node
-        if self.freelist.data.offset == FREE_LIST_CAP_WITH_VERSION
-        {
-            let ptrNode = self.freelist.data.nodes.remove(0);
-            self.freelist.freenode = Some(ptrNode);
-            self.freelist.data.total += 1;
-
-            self.freelist.data.offset = 0;
-            if self.freelist.data.nodes.len() != 0 
-            {
-                self.freelist.data.head = self.freelist.data.nodes[0];
-            }
-            else {
-                self.freelist.data.head = 0;
-            }
-        }
-
         ptr
     }
 
@@ -128,6 +119,7 @@ impl Tx{
             return Ok(());
         }
 
+        self.freelist.freed.reverse();
         //update head
         let mut i:usize = 0;
         
@@ -182,33 +174,13 @@ impl Tx{
                 i -= size;
             }
             else {
+                newNode.flnSetTotal(size as u64);
+                self.useNode(ptr, &newNode);
                 self.freelist.data.nodes.push(ptr);
                 self.freelist.data.head = ptr;
             }
         }
        
-        //update freenode
-        if let Some(n) = self.freelist.freenode {
-            let ptrTail = self.freelist.data.nodes.last().unwrap().clone();
-            let mut tail = self.get(ptrTail).unwrap();
-    
-            let offset = tail.flnSize() as usize;
-            if  offset == FREE_LIST_CAP_WITH_VERSION
-            {
-                let mut newNode = BNode::new(BTREE_PAGE_SIZE);
-                newNode.flnSetHeader(0,0);
-                let ptr = self.appendNode(&newNode);
-
-                tail.flnSetNext(ptr);
-                self.useNode(ptrTail,&tail);
-                self.freelist.data.nodes.push(ptr);
-            }
-            else {
-                tail.flnSetPtrWithVersion( offset as usize, n,self.freelist.version);    
-                tail.flnSetHeader((offset + 1) as u16, 0)             
-            }
-        }
-
         //update head
         if self.freelist.data.offset != 0
         {
@@ -311,6 +283,56 @@ mod tests {
 
 
     #[test]
+    fn test_freelist_null()
+    {   
+        //one free node
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*11];
+        let mut tx = prepaircase_nonefreelist(&mut data);
+       
+        tx.freelist.freed.push(1);
+        tx.updatefreelist();
+
+        assert_eq!(1,tx.freelist.updates.len());
+        let n = tx.freelist.updates.get(&11);
+        assert!(n.is_some());
+
+        let ptr = tx.freelist.data.head;
+        let freenode = tx.get(ptr).unwrap();
+
+        assert_eq!(1,freenode.flnSize());
+        assert_eq!(1,freenode.flnGetTotal());
+        let (ptr1,v) = freenode.flnPtrWithVersion(0);
+        assert!(ptr1 == 1);
+        assert!(v == 1);
+
+        //two free node
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*11];
+        let mut tx = prepaircase_nonefreelist(&mut data);
+       
+        tx.freelist.freed.push(1);
+        tx.freelist.freed.push(2);
+        tx.updatefreelist();
+
+        assert_eq!(1,tx.freelist.updates.len());
+        let n = tx.freelist.updates.get(&11);
+        assert!(n.is_some());
+
+        let ptr = tx.freelist.data.head;
+        let freenode = tx.get(ptr).unwrap();
+
+        assert_eq!(2,freenode.flnSize());
+        assert_eq!(2,freenode.flnGetTotal());
+        let (ptr1,v) = freenode.flnPtrWithVersion(0);
+        freenode.print();
+        assert!(ptr1 == 1);
+        assert!(v == 1);
+
+        let (ptr1,v) = freenode.flnPtrWithVersion(1);
+        assert!(ptr1 == 2);
+        assert!(v == 1);
+    }
+    
+    #[test]
     fn test_use_node()
     {   
         let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*11];
@@ -328,14 +350,10 @@ mod tests {
         assert_eq!(1,n1.nkeys());
         let v: &[u8] = n1.get_val(0);
         assert_eq!("Val1".as_bytes(),v);
-        //tx.freelist.freed.push(0);
-        //tx.updatefreelist();
-
     }
 
     fn prepaircase_nonefreelist(data:&mut Vec<u8>)->Tx
     {
-        println!("Before get11");
         //master
         let mut master = BNode::new(BTREE_PAGE_SIZE);
 
@@ -356,13 +374,10 @@ mod tests {
             data[(i+1)*BTREE_PAGE_SIZE..(i+2)*BTREE_PAGE_SIZE].copy_from_slice(nodes[i].data());
         }
 
-        println!("Before get");
-        // 获取 Vec<u8> 的指针
         let data_ptr: *mut u8 = data.as_mut_ptr();
         let mmap = Mmap { ptr: data_ptr, writer: Shared::new(())};
         let mmap =  Arc::new(RwLock::new(mmap));
         let mut nodes = Vec::new();
-        println!("End get");
         let tx = Tx::new(mmap,11,BTREE_PAGE_SIZE * 15, &nodes,0,8,0,1,1);
 
         tx
