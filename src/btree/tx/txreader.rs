@@ -119,14 +119,19 @@ impl TxReadContext for TxReader{
 
     fn get(&self,key:u64) -> Option<BNode>{
         let offset = key as usize * BTREE_PAGE_SIZE;
-        assert!(offset + BTREE_PAGE_SIZE < self.len);
+        assert!(offset + BTREE_PAGE_SIZE <= self.len);
 
+        
         if let Ok(mmap) = self.data.read(){
+
             let mut newNode = BNode::new(BTREE_PAGE_SIZE);
+            //println!("index:{}",key);
             newNode.copy_Content(mmap.ptr, offset, BTREE_PAGE_SIZE);
             drop(mmap);
             //newNode.copy_Data(&self.data,offset,BTREE_PAGE_SIZE);
+            //newNode.print();
             return Some(newNode);    
+
         }
         println!("Get Lock Error!");
         None

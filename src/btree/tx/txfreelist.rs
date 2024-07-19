@@ -1,5 +1,5 @@
 use std::{collections::HashMap, sync::{Arc, RwLock}};
-use crate::btree::{kv::{node::BNode, nodeinterface::{BNodeFreeListInterface, BNodeWriteInterface}, ContextError, FREE_LIST_CAP_WITH_VERSION}, BTREE_PAGE_SIZE};
+use crate::btree::{kv::{node::{self, BNode}, nodeinterface::{BNodeFreeListInterface, BNodeReadInterface, BNodeWriteInterface}, ContextError, FREE_LIST_CAP_WITH_VERSION}, BTREE_PAGE_SIZE};
 use super::{txinterface::TxReadContext, txreader::TxReader, winmmap::Mmap};
 
 pub struct FreeListData{
@@ -12,12 +12,18 @@ pub struct FreeListData{
     offset:usize,
 }
 impl FreeListData {
-    pub fn new(head:u64)->Self
+    pub fn new(head:u64,nodes:&Vec<u64>,total:usize)->Self
     {
+        let mut n:Vec<u64> = Vec::with_capacity(nodes.len());
+        for i in nodes
+        {
+            n.push(i.clone());
+        }
+
         FreeListData{
             head:head,
-            nodes:Vec::new(),
-            total:0,
+            nodes:n,
+            total:total,
             offset:0,
         }
     }
@@ -36,10 +42,10 @@ pub struct TxFreeList{
 }
 
 impl TxFreeList{
-    pub fn new(head:u64,version:u64,minReader:u64)->Self
+    pub fn new(head:u64,version:u64,minReader:u64,nodes:&Vec<u64>,total:usize)->Self
     {
         TxFreeList{
-            data: FreeListData::new(head),
+            data: FreeListData::new(head,nodes,total),
             version:version,
             minReader:minReader,
             updates: HashMap::new(),
@@ -61,7 +67,7 @@ impl Tx{
         let mut reader = TxReader::new(data, len);
         Tx{
             reader: reader,
-            freelist: TxFreeList::new(head,version,minReader),
+            freelist: TxFreeList::new(head,version,minReader,nodes,total),
             pageflushed:pageflushed,
             nappend:0,
         }
@@ -81,7 +87,8 @@ impl Tx{
             return 0;
         }
 
-        if  self.freelist.data.offset == FREE_LIST_CAP_WITH_VERSION
+        let mut node = self.get(self.freelist.data.nodes[0]).unwrap();
+        if  self.freelist.data.offset == node.flnSize() as usize
         {
             let ptrNode = self.freelist.data.nodes.remove(0);
             self.freelist.data.total -= 1;
@@ -98,7 +105,6 @@ impl Tx{
         }
 
         // remove one item from the tail
-        let mut node = self.get(self.freelist.data.nodes[0]).unwrap();
         assert!(self.freelist.data.offset < node.flnSize() as usize);
         let (ptr,ver) = node.flnPtrWithVersion(self.freelist.data.offset);
         if Self::versionbefore(ver,self.freelist.minReader)
@@ -119,16 +125,16 @@ impl Tx{
             return Ok(());
         }
 
+        let count = self.freelist.freed.len();
         self.freelist.freed.reverse();
         //update head
         let mut i:usize = 0;
-        
         if let Some(&ptrTail) = self.freelist.data.nodes.last()
         {
             let mut tail = self.get(ptrTail).unwrap();
             let mut idx = tail.flnSize() as usize;
     
-            while  i< self.freelist.freed.len() && idx < FREE_LIST_CAP_WITH_VERSION 
+            while i< count && idx < FREE_LIST_CAP_WITH_VERSION 
             {
                 let ptr = self.freelist.freed.pop().unwrap();
                 tail.flnSetPtrWithVersion( idx, ptr,self.freelist.version);
@@ -139,7 +145,7 @@ impl Tx{
             self.useNode(ptrTail,&tail);
         }
 
-        while i < self.freelist.freed.len()
+        while i < count
         {
             let mut ptr = self.PopFreeNode();
             let mut newNode = BNode::new(BTREE_PAGE_SIZE);
@@ -149,6 +155,7 @@ impl Tx{
             {
                 size = FREE_LIST_CAP_WITH_VERSION;
             }
+            i += size;
 
             newNode.flnSetHeader(size as u16, 0);
             for idx in 0..size 
@@ -156,12 +163,15 @@ impl Tx{
                 let ptr = self.freelist.freed.pop().unwrap();
                 newNode.flnSetPtrWithVersion( idx, ptr,self.freelist.version);
             }
+
+
             if ptr != 0
             {
                 self.useNode(ptr, &newNode);
             }
             else {
                 ptr = self.appendNode(&newNode);
+                self.freelist.data.total += 1;
             }
 
             if let Some(&ptrTail) = self.freelist.data.nodes.last()
@@ -171,16 +181,15 @@ impl Tx{
                 self.useNode(ptrTail,&tail);
     
                 self.freelist.data.nodes.push(ptr);
-                i -= size;
             }
             else {
-                newNode.flnSetTotal(size as u64);
+                newNode.flnSetTotal(size as u64 + 1);
                 self.useNode(ptr, &newNode);
                 self.freelist.data.nodes.push(ptr);
                 self.freelist.data.head = ptr;
             }
         }
-       
+               
         //update head
         if self.freelist.data.offset != 0
         {
@@ -196,7 +205,17 @@ impl Tx{
                 newNode.flnSetPtrWithVersion( idx, ptr,self.freelist.version);
                 idx += 1;
             }
+            newNode.flnSetTotal(self.freelist.data.total as u64 + count as u64);
+            newNode.flnSetHeader(head.flnSize() - self.freelist.data.offset as u16,head.flnNext());
             self.useNode(ptrHead, &newNode);
+        }
+        else 
+        {
+            let ptrHead = self.freelist.data.nodes[0].clone();
+            let mut head = self.get(ptrHead).unwrap();
+            
+            head.flnSetTotal(self.freelist.data.total as u64 + count as u64);
+            self.useNode(ptrHead, &head);
         }
 
         Ok(())
@@ -281,9 +300,117 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn test_freelist_updatefreelist()
+    {   
+        println!("Max Free Node:{}",FREE_LIST_CAP_WITH_VERSION);
+
+        //Free all node to tail
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*15];
+        let mut tx = preparenormalcase(&mut data,1);
+
+        let mut f:Vec<u64> = Vec::new();
+        for i in 0..252
+        {
+            f.push(i);
+        }
+        tx.freelist.freed.append(&mut f);
+        tx.updatefreelist();
+
+        let ptrTail = tx.freelist.data.nodes.last().unwrap();
+        assert_eq!(14,*ptrTail);
+        let nodeTail = tx.get(*ptrTail).unwrap();
+        assert_eq!(254,nodeTail.flnSize());
+
+        let nodeHead = tx.get(tx.freelist.data.head).unwrap();
+        assert_eq!(264,nodeHead.flnGetTotal());
+
+        //Free all node to tail + new tail + remove freenode
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*15];
+        let mut tx = preparenormalcase(&mut data,1);
+
+        let mut f:Vec<u64> = Vec::new();
+        for i in 0..253
+        {
+            f.push(i);
+        }
+        tx.freelist.freed.append(&mut f);
+        tx.updatefreelist();
+
+        let ptrTail = tx.freelist.data.nodes.last().unwrap();
+        assert_eq!(2,*ptrTail);
+        let nodeTail = tx.get(*ptrTail).unwrap();
+        assert_eq!(1,nodeTail.flnSize());
+        let nodeSecondTail = tx.get(14).unwrap();
+        assert_eq!(2,nodeSecondTail.flnNext());
+
+        let nodeHead = tx.get(tx.freelist.data.head).unwrap();
+        assert_eq!(264,nodeHead.flnGetTotal());
+        assert_eq!(1,nodeHead.flnSize());
+
+    }
 
     #[test]
-    fn test_freelist_null()
+    fn test_freelist_popnode()
+    {   
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*15];
+        let mut tx = preparenormalcase(&mut data,1);
+
+        //pop one node
+        let ptr = tx.PopFreeNode();
+        assert_eq!(2,ptr);
+        assert_eq!(11,tx.freelist.data.total);
+        assert_eq!(1,tx.freelist.data.offset);        
+
+        let ptr = tx.PopFreeNode();
+        assert_eq!(3,ptr);
+        assert_eq!(10,tx.freelist.data.total);
+        assert_eq!(2,tx.freelist.data.offset);
+
+        let ptr = tx.PopFreeNode();
+        assert_eq!(11,ptr);
+        assert_eq!(9,tx.freelist.data.total);
+        assert_eq!(0,tx.freelist.data.offset);
+        assert_eq!(12,tx.freelist.data.head);
+
+        let ptr = tx.PopFreeNode();
+        assert_eq!(4,ptr);
+        assert_eq!(8,tx.freelist.data.total);
+        assert_eq!(1,tx.freelist.data.offset);
+        assert_eq!(12,tx.freelist.data.head);
+
+        let ptr = tx.PopFreeNode();  //5
+        let ptr = tx.PopFreeNode();  //12
+        let ptr = tx.PopFreeNode();  //6
+        let ptr = tx.PopFreeNode();  //7
+
+        let ptr = tx.PopFreeNode();  //13
+        assert_eq!(13,ptr);
+        assert_eq!(3,tx.freelist.data.total);
+        assert_eq!(0,tx.freelist.data.offset);
+        assert_eq!(14,tx.freelist.data.head);
+
+        let ptr = tx.PopFreeNode();  //8
+        assert_eq!(8,ptr);
+        assert_eq!(2,tx.freelist.data.total);
+        assert_eq!(1,tx.freelist.data.offset);
+        assert_eq!(14,tx.freelist.data.head);
+
+        let ptr = tx.PopFreeNode();  //9
+        assert_eq!(9,ptr);
+        assert_eq!(1,tx.freelist.data.total);
+        assert_eq!(2,tx.freelist.data.offset);
+        assert_eq!(14,tx.freelist.data.head);
+
+        let ptr = tx.PopFreeNode();  //9
+        assert_eq!(14,ptr);
+        assert_eq!(0,tx.freelist.data.total);
+        assert_eq!(0,tx.freelist.data.offset);
+        assert_eq!(0,tx.freelist.data.head);
+    }
+
+    #[test]
+    fn test_freelist_freenodewithnull()
     {   
         //one free node
         let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*11];
@@ -300,12 +427,12 @@ mod tests {
         let freenode = tx.get(ptr).unwrap();
 
         assert_eq!(1,freenode.flnSize());
-        assert_eq!(1,freenode.flnGetTotal());
+        assert_eq!(2,freenode.flnGetTotal());
         let (ptr1,v) = freenode.flnPtrWithVersion(0);
         assert!(ptr1 == 1);
         assert!(v == 1);
 
-        //two free node
+        //free two node
         let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*11];
         let mut tx = prepaircase_nonefreelist(&mut data);
        
@@ -321,15 +448,16 @@ mod tests {
         let freenode = tx.get(ptr).unwrap();
 
         assert_eq!(2,freenode.flnSize());
-        assert_eq!(2,freenode.flnGetTotal());
+        assert_eq!(3,freenode.flnGetTotal());
         let (ptr1,v) = freenode.flnPtrWithVersion(0);
-        freenode.print();
+        //freenode.print();
         assert!(ptr1 == 1);
         assert!(v == 1);
 
         let (ptr1,v) = freenode.flnPtrWithVersion(1);
         assert!(ptr1 == 2);
         assert!(v == 1);
+
     }
     
     #[test]
@@ -345,7 +473,7 @@ mod tests {
 
         assert_eq!(1,tx.freelist.updates.len());
         let n1 = tx.get(2).unwrap();
-        n1.print();
+        //n1.print();
 
         assert_eq!(1,n1.nkeys());
         let v: &[u8] = n1.get_val(0);
@@ -373,68 +501,77 @@ mod tests {
         {
             data[(i+1)*BTREE_PAGE_SIZE..(i+2)*BTREE_PAGE_SIZE].copy_from_slice(nodes[i].data());
         }
-
+        //println!("{:?}",data);
         let data_ptr: *mut u8 = data.as_mut_ptr();
         let mmap = Mmap { ptr: data_ptr, writer: Shared::new(())};
         let mmap =  Arc::new(RwLock::new(mmap));
         let mut nodes = Vec::new();
-        let tx = Tx::new(mmap,11,BTREE_PAGE_SIZE * 15, &nodes,0,8,0,1,1);
+        let tx = Tx::new(mmap,11,BTREE_PAGE_SIZE * 15, &nodes,0,0,
+            0,1,1);
 
         tx
 
     }
 
-    fn prepairnormalcase(data:&mut Vec<u8>)->Tx
+    fn preparenormalcase(data:&mut Vec<u8>,minReaderVersion:u64)->Tx
     {
         //master
         let mut master = BNode::new(BTREE_PAGE_SIZE);
 
         //node from 1..10
         let mut nodes:Vec<BNode> = Vec::new();
-        for i in 1..11
+        for i in 0..10
         {
             let mut n = BNode::new(BTREE_PAGE_SIZE);
             n.set_header(BNODE_NODE,0);
             nodes.push(n);
-            //println!("Node Key:{i}");
+            //println!("Node Key:{}",i+1);
         }
 
         //free node from 11..14,free node 23,45,67,89
         let mut freenodes:Vec<BNode> = Vec::new();
-        for i in 1..5
+        for i in 0..4
         {
             let mut n = BNode::new(BTREE_PAGE_SIZE);
-            if( i == 4)
+            if( i == 3)
             {
                 n.flnSetHeader(2, 0);
             }
             else
             {
-                n.flnSetHeader(2, 10 + i+1);
+                n.flnSetHeader(2, 10 +i+2);
             }
             for j in 0..2
             {
-                n.flnSetPtrWithVersion(j,(2 *i + j as u64) as u64 , i);
-                //println!("Free Node SetPtr:{} {}",10 + i, 2 *i + j as u64);
+                n.flnSetPtrWithVersion(j,(2 *i + 2 + j as u64) as u64 , i + 2);
+                //println!("Free Node SetPtr:{} {}",10 + i + 1, 2 *i + 2 + j as u64);
             }
-            //println!("Free Node Key:{}  Next:{}",10 + i, n.flnNext());
-            if i== 1
+            //println!("Free Node Key:{}  Next:{}",10 + i + 1, n.flnNext());
+            if i== 0
             {
                 n.flnSetTotal(8);
+                //n.print();
             }
             freenodes.push(n);
         }
 
+        let mut idx:usize = 0;
         //let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*15];
-        data[0..BTREE_PAGE_SIZE].copy_from_slice(master.data());
+        data[idx*BTREE_PAGE_SIZE..(idx+1)*BTREE_PAGE_SIZE].copy_from_slice(master.data());
+        idx += 1;
+
         for i in 0..nodes.len()
         {
-            data[ (i+1)*BTREE_PAGE_SIZE..(i+2)*BTREE_PAGE_SIZE].copy_from_slice(nodes[i].data());
+            data[ idx*BTREE_PAGE_SIZE..(idx+1)*BTREE_PAGE_SIZE].copy_from_slice(nodes[i].data());
+            idx += 1;
         }
         for i in 0..freenodes.len()
         {
-            data[ (i+11)*BTREE_PAGE_SIZE..(i+12)*BTREE_PAGE_SIZE].copy_from_slice(freenodes[i].data());
+            data[ idx*BTREE_PAGE_SIZE..(idx+1)*BTREE_PAGE_SIZE].copy_from_slice(freenodes[i].data());
+            idx += 1;
         }
+
+        //println!("{:?}",&data[11*BTREE_PAGE_SIZE..12*BTREE_PAGE_SIZE]);
 
         // 获取 Vec<u8> 的指针
         let data_ptr: *mut u8 = data.as_mut_ptr();
@@ -445,8 +582,9 @@ mod tests {
         nodes.push(12);
         nodes.push(13);
         nodes.push(14);
-
-        let tx = Tx::new(mmap,15,BTREE_PAGE_SIZE * 15, &nodes,11,8,0,1,1);
+ 
+        let tx = Tx::new(mmap,15,BTREE_PAGE_SIZE * 15, &nodes,11,12,0,
+            3,minReaderVersion);
 
         tx
     }
