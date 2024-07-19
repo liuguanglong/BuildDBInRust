@@ -12,13 +12,13 @@ pub struct TxReader{
 }
 
 impl TxReader{
-    pub fn new(data:Arc<RwLock<Mmap>>,len:usize) -> TxReader{
+    pub fn new(data:Arc<RwLock<Mmap>>,len:usize,version:u64,index:u64) -> TxReader{
         TxReader{
             data:data,
             len:len,
             root:0,
-            version:0,
-            index:0,
+            version:version,
+            index:index,
         }
     }
 

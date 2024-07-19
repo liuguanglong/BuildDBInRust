@@ -33,7 +33,5 @@ pub trait TxContent{
 
 pub trait TxFreeListInterface{
     fn GetFreeNode(&self, topN: u16)-> Result<u64,ContextError>;
-    fn TotalFreeNode(&self)-> Result<u64,ContextError>;
-    fn UpdateFreeList(&mut self, popn: u16, freed:&Vec<u64>)->Result<(),ContextError>;
-    fn flPush(&mut self, listFreeNode: &mut Vec<u64>, listReuse:  &mut Vec<u64>);
+    fn UpdateFreeList(&mut self)->Result<(),ContextError>;
 }
