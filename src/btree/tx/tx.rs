@@ -10,6 +10,36 @@ pub struct Tx{
     pub root:u64,
 }
 
+impl TxReadContext for Tx{
+    fn get_root(&self)->u64{
+        return self.root;
+    }
+
+    fn get(&self,key:u64) -> Option<BNode>
+    {
+        let node = self.freelist.updates.get(&key);
+        match &node
+        {
+            Some(Some(x)) => {
+                Some(x.copy())    
+            },
+            Some(None) =>{
+                None
+            },
+            Other=>
+            {
+                if let Some(n) = self.reader.get(key)
+                {
+                    Some(n)
+                }
+                else {
+                    None
+                }
+            },
+        }
+    }
+}
+
 impl Tx{
     pub fn new(data:Arc<RwLock<Mmap>>,root:u64,pageflushed:u64,filelen:usize,readerindex:u64,readerversion:u64,
         freenodes:&Vec<u64>,freehead:u64,freetotal:usize,offset:usize,version:u64,minReader:u64)->Self
@@ -190,9 +220,6 @@ impl Tx{
         ptr
     }
 
-    pub fn get_root(&self)->u64{
-        return self.root;
-    }
     pub fn set_root(&mut self,ptr:u64){
         self.root = ptr;
     }
@@ -213,30 +240,6 @@ impl Tx{
         self.freelist.updates.insert(ptr, Some(newNode));
 
         return ptr;
-    }
-
-    pub fn get(&self,key:u64) -> Option<BNode>
-    {
-        let node = self.freelist.updates.get(&key);
-        match &node
-        {
-            Some(Some(x)) => {
-                Some(x.copy())    
-            },
-            Some(None) =>{
-                None
-            },
-            Other=>
-            {
-                if let Some(n) = self.reader.get(key)
-                {
-                    Some(n)
-                }
-                else {
-                    None
-                }
-            },
-        }
     }
 
     pub fn useNode(&mut self, ptr: u64, bnode: &BNode) {

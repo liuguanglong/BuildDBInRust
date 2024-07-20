@@ -1,26 +1,35 @@
 use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}};
 
-use super::tx::{self, Tx};
+use super::{tx::{self, Tx}, txinterface::{TxInterface, TxReadContext, TxReaderInterface}};
 
 
 pub struct txwriter{
     context : Tx,
 }
 
-impl txwriter{
+impl TxReaderInterface for txwriter{
 
-    pub fn Set(&mut self,req:&mut InsertReqest){
+    fn Get(&self, key:&[u8])  -> Option<Vec<u8>> {
+        self.context.reader.Get(key)
+    }
+
+    fn Seek(&self, key:&[u8], cmp:crate::btree::scan::comp::OP_CMP) -> super::txbiter::TxBIter {
+        self.context.reader.Seek(key, cmp)
+    }
+}
+
+
+impl TxInterface for txwriter{
+    fn Set(&mut self,req:&mut InsertReqest){
         self.InsertKV(req);
     }
 
-    pub fn Delete(&mut self, req: &mut DeleteRequest) -> bool{
-
-        let ret = self.DeleteKV(req);
-        if ret == false {
-            todo!("Rollback");
-        }
-        true
+    fn Delete(&mut self, req: &mut DeleteRequest) -> bool{
+        self.DeleteKV(req)
     }
+}
+
+impl txwriter{
 
     fn DeleteKV(&mut self, request: &mut DeleteRequest) -> bool
     {

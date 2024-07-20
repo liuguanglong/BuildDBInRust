@@ -120,7 +120,6 @@ impl TxReadContext for TxReader{
     fn get(&self,key:u64) -> Option<BNode>{
         let offset = key as usize * BTREE_PAGE_SIZE;
         assert!(offset + BTREE_PAGE_SIZE <= self.len);
-
         
         if let Ok(mmap) = self.data.read(){
 
