@@ -443,4 +443,147 @@ impl txwriter{
         //_ = self.context.del(kptr);
         //std.debug.print("Split Count:{d}", .{subNodes.Count});
     }
+
+
+    pub fn print(&self){
+        let root = self.context.get_root();
+        println!("BTree content: Root:{:?} \n", root);
+        if root == 0
+        {
+            return;
+        }
+
+        let nodeRoot = self.context.get(root);
+        match nodeRoot{
+            Some(r) => self.printNode(&r),
+            None => println!("Root is not set!")
+        }
+        println!();
+    }
+
+    fn printNode<T:BNodeReadInterface>(&self, treenode: &T) {
+        if treenode.btype() == crate::btree::BNODE_LEAF {
+            treenode.print();
+        } else if treenode.btype() == crate::btree::BNODE_FREE_LIST {
+            //treenode.print();
+        } else {
+            treenode.print();
+            let nkeys = treenode.nkeys();
+            println!("NKeys {:?}", nkeys);
+            let mut idx: u16 = 0;
+            while idx < nkeys {
+                let prtNode = treenode.get_ptr(idx as usize);
+                let subNode = self.context.get(prtNode);
+                match subNode{
+                    Some(r) => self.printNode(&r),
+                    None => println!("Root is not set!")
+                }
+                idx = idx + 1;
+            }
+        }
+    }
+
+}
+
+
+#[cfg(test)]
+mod tests {
+
+    use std::sync::{Arc, RwLock};
+    use crate::btree::{tx::{txdemo::Shared, winmmap::Mmap}, BTREE_PAGE_SIZE};
+    use super::*;
+
+    #[test]
+    fn test_btree_memorycontext()
+    {
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*2];
+        let mut tx = prepaircase_nonefreelist_noneNode(&mut data);
+        let mut txwriter = txwriter{
+            context:tx,
+        };
+        
+        let mut request = InsertReqest::new("1".as_bytes(), &[31;2500], crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+        let mut request = InsertReqest::new("2".as_bytes(), &[32;2500], crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+        let mut request = InsertReqest::new("hello".as_bytes(),  "rust".as_bytes(), crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+        let mut request = InsertReqest::new("3".as_bytes(), &[33;2500], crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+        let mut request = InsertReqest::new("4".as_bytes(), &[34;2500], crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+
+        let v = txwriter.Get("hello".as_bytes());
+        match(v)
+        {
+            Some(s) => println!("{0}",String::from_utf8(s).unwrap()),
+            None=> {}
+        }
+
+        let mut request = DeleteRequest::new("2".as_bytes());
+        let r1 = txwriter.Delete(&mut request);
+        assert_eq!(true,r1);
+
+        let mut request = DeleteRequest::new("2".as_bytes());
+        let r2 = txwriter.Delete(&mut request);
+        assert_eq!(false,r2);
+
+        let r3 = txwriter.Get("2".as_bytes());
+        assert_eq!(true,r3.is_none());
+
+        //txwriter.print();
+    }
+
+    #[test]
+    fn test_setex_deleteex()
+    {
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*2];
+        let mut tx = prepaircase_nonefreelist_noneNode(&mut data);
+        let mut txwriter = txwriter{
+            context:tx,
+        };
+
+        let mut request = InsertReqest::new("3".as_bytes(), "33333".as_bytes(), crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+        let mut request = InsertReqest::new("1".as_bytes(), "11111".as_bytes(), crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+        let mut request = InsertReqest::new("7".as_bytes(), "77777".as_bytes(), crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+        let mut request = InsertReqest::new("5".as_bytes(), "55555".as_bytes(), crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+
+        let mut reqUpdate = InsertReqest::new("1".as_bytes(),"rust".as_bytes(),crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut reqUpdate);
+        assert_eq!("11111".as_bytes(),reqUpdate.OldValue);
+
+        let mut reqDelete = DeleteRequest::new("3".as_bytes());
+        txwriter.Delete(&mut reqDelete);
+        assert_eq!("33333".as_bytes(),reqDelete.OldValue);
+    }
+
+    fn prepaircase_nonefreelist_noneNode(data:&mut Vec<u8>)->Tx
+    {
+        //master
+        let mut master = BNode::new(BTREE_PAGE_SIZE);
+
+        //root node
+        let mut root = BNode::new(BTREE_PAGE_SIZE);
+        root.set_header(crate::btree::BNODE_LEAF, 1);
+        root.node_append_kv(0, 0, &[0;1], &[0;1]);
+
+        data[0..BTREE_PAGE_SIZE].copy_from_slice(master.data());
+        data[BTREE_PAGE_SIZE..2*BTREE_PAGE_SIZE].copy_from_slice(root.data());
+
+        //println!("{:?}",data);
+        let data_ptr: *mut u8 = data.as_mut_ptr();
+        let mmap = Mmap { ptr: data_ptr, writer: Shared::new(())};
+        let mmap =  Arc::new(RwLock::new(mmap));
+        let mut nodes = Vec::new();
+        let tx = Tx::new(mmap,1,2,BTREE_PAGE_SIZE * 2, 
+            &nodes,0,0,1,1);
+
+        tx
+
+    }
+
 }

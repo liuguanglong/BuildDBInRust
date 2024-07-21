@@ -273,8 +273,7 @@ mod tests {
         let mmap = Mmap { ptr: data_ptr, writer: Shared::new(())};
         let mmap =  Arc::new(RwLock::new(mmap));
         let mut nodes = Vec::new();
-        let tx = Tx::new(mmap,1,11,BTREE_PAGE_SIZE * 15, 0,
-            0,&nodes,0,0,
+        let tx = Tx::new(mmap,1,11,BTREE_PAGE_SIZE * 15, &nodes,0,
             0,1,1);
 
         tx
@@ -352,9 +351,8 @@ mod tests {
         nodes.push(14);
  
         let tx = Tx::new(mmap,1,15,BTREE_PAGE_SIZE * 15,
-            0,0, &nodes,
-            11,12,0,
-            3,minReaderVersion);
+           &nodes,
+            11,12,3,minReaderVersion);
 
         tx
     }

@@ -11,8 +11,6 @@ pub struct Tx{
     //pub reader:TxReader,
     len:usize,
     data:Arc<RwLock<Mmap>>,
-    version:u64,
-    index:u64,
 }
 
 impl TxReadContext for Tx{
@@ -40,15 +38,13 @@ impl TxReadContext for Tx{
 }
 
 impl Tx{
-    pub fn new(data:Arc<RwLock<Mmap>>,root:u64,pageflushed:u64,filelen:usize,readerindex:u64,readerversion:u64,
-        freenodes:&Vec<u64>,freehead:u64,freetotal:usize,offset:usize,version:u64,minReader:u64)->Self
+    pub fn new(data:Arc<RwLock<Mmap>>,root:u64,pageflushed:u64,filelen:usize,
+        freenodes:&Vec<u64>,freehead:u64,freetotal:usize,version:u64,minReader:u64)->Self
     {
         //let mut reader = TxReader::new(data, filelen,readerversion,readerindex);
         Tx{
             data: data,
             len:filelen,
-            version:readerversion,
-            index:readerindex,
             freelist: TxFreeList::new(freehead,version,minReader,freenodes,freetotal),
             pageflushed:pageflushed,
             nappend:0,
@@ -297,3 +293,4 @@ impl Tx{
         }        
     }
 }
+
