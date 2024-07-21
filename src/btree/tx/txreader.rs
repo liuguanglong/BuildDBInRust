@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
-use crate::btree::{kv::{node::BNode, nodeinterface::{BNodeReadInterface, BNodeWriteInterface}}, scan::{biter::BIter, comp::OP_CMP}, BTREE_PAGE_SIZE};
-use super::{txbiter::TxBIter, txinterface::{TxReadContext, TxReaderInterface}, winmmap::Mmap};
+use crate::btree::{kv::{node::BNode, nodeinterface::{BNodeReadInterface, BNodeWriteInterface}}, scan::{biter::BIter, comp::OP_CMP}, table::record::Record, BTreeError, BTREE_PAGE_SIZE};
+use super::{txScanner::TxScanner, txbiter::TxBIter, txinterface::{DBReadInterface, TxReadContext, TxReaderInterface}, winmmap::Mmap};
 
 pub struct TxReader{
     data:Arc<RwLock<Mmap>>,
@@ -9,6 +9,18 @@ pub struct TxReader{
     version:u64,
     index:u64,
     len:usize
+}
+
+impl DBReadInterface for TxReader{
+    fn Scan(&self, cmp1: OP_CMP, cmp2: OP_CMP, key1:&crate::btree::table::record::Record, key2:&crate::btree::table::record::Record)->Result<super::txScanner::TxScanner,crate::btree::BTreeError> {
+        if let Ok(indexNo) = key1.findIndexes()
+        {
+            return self.SeekRecord(indexNo, cmp1, cmp2, key1, key2);
+        }
+        else {            
+            return Err(BTreeError::IndexNotFoundError);
+        }
+    }
 }
 
 impl TxReader{
@@ -22,6 +34,51 @@ impl TxReader{
         }
     }
 
+    fn SeekRecord(&self,idxNumber:i16, cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<TxScanner,BTreeError> {
+        
+        // sanity checks
+        if cmp1.value() > 0 && cmp2.value() < 0 
+        {} 
+        else if cmp2.value() > 0 && cmp1.value() < 0 
+        {} 
+        else {
+            return Err(BTreeError::BadArrange);
+        }
+
+        let mut keyStart: Vec<u8> = Vec::new();
+        let mut keyEnd: Vec<u8> = Vec::new();
+
+        if idxNumber == -1
+        {
+            let bCheck1 = key1.checkPrimaryKey();
+            if  bCheck1 == false {
+                return Err(BTreeError::KeyError);
+            }
+            let bCheck2 = key2.checkPrimaryKey();
+            if  bCheck2 == false {
+                return Err(BTreeError::KeyError);
+            }
+    
+            key1.encodeKey(key1.def.Prefix, &mut keyStart);
+            key2.encodeKey(key2.def.Prefix, &mut keyEnd);
+        }
+        else {
+            key1.encodeKeyPartial(idxNumber as usize,&mut keyStart,);
+            key2.encodeKeyPartial(idxNumber as usize,&mut keyEnd);
+            println!("KeyStart:{:?}  KeyEnd:{:?}",keyStart,keyEnd);
+        }
+
+        let iter = self.Seek(&keyStart, cmp1);
+        if iter.Valid() == false
+        {
+            return Err(BTreeError::NextNotFound);
+        }
+        Ok(
+            TxScanner::new(idxNumber,cmp1,cmp2,keyStart,keyEnd,iter)
+        )
+
+    }
+    
     fn SeekLE(&self, key:&[u8]) -> TxBIter
     {
         let mut iter = TxBIter::new(self);

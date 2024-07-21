@@ -1,11 +1,154 @@
-use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, scan::comp::OP_CMP};
+use std::{collections::HashMap, sync::{Arc, RwLock}};
 
-use super::{tx::{self, Tx}, txbiter::TxBIter, txinterface::{TxInterface, TxReadContext, TxReaderInterface}};
+use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_UPSERT};
+
+use super::{tx::{self, Tx}, txScanner::{self, TxScanner}, txbiter::TxBIter, txinterface::{DBTxInterface, TxInterface, TxReadContext, TxReaderInterface, TxWriteContext}};
 
 
 pub struct txwriter{
     context : Tx,
+    tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>,
 }
+
+impl DBTxInterface for txwriter{
+
+    fn Scan(&self, cmp1: OP_CMP, cmp2: OP_CMP, key1:&crate::btree::table::record::Record, key2:&crate::btree::table::record::Record)->Result<TxScanner,crate::btree::BTreeError> {
+        if let Ok(indexNo) = key1.findIndexes()
+        {
+            return self.SeekRecord(indexNo, cmp1, cmp2, key1, key2);
+        }
+        else {            
+            return Err(BTreeError::IndexNotFoundError);
+        }
+    }
+
+    fn DeleteRecord(&mut self, rec:&crate::btree::table::record::Record)->Result<bool,crate::btree::BTreeError> {
+        let bCheck = rec.checkPrimaryKey();
+        if (bCheck == false) {
+            return Err(BTreeError::PrimaryKeyIsNotSet);
+        }
+
+        let mut key = Vec::new();
+        rec.encodeKey(rec.def.Prefix, &mut key);
+
+        let mut request = DeleteRequest::new(&key);
+        let ret = self.Delete(&mut request);
+        if ret == false 
+        {
+            return Ok(false);
+        }
+
+        if rec.def.Indexes.len() == 0  {
+            return Ok(true);
+        }
+
+        let mut old = Record::new(&rec.def);
+        old.decodeValues(&request.OldValue);
+        old.deencodeKey(&key);
+        self.indexOp(&mut old, INDEX_DEL);
+
+        return Ok(true);
+    }
+
+    fn AddTable(&mut self, tdef:&mut crate::btree::table::table::TableDef)-> Result<(),crate::btree::BTreeError> {
+        
+        //check the existing table
+        let mut rtable = Record::new(&TDEF_TABLE);
+        rtable.Set( "name".as_bytes(), Value::BYTES(tdef.Name.clone()));
+
+        let ret1 = self.dbGet(&mut rtable);
+        if let Ok(rc) = ret1
+        {
+            if rc == true
+            {
+                return Err(BTreeError::TableAlreadyExist);
+            }
+        }
+
+        assert!(0 == tdef.Prefix);
+        let mut rMeta = Record::new(&TDEF_META);
+
+        tdef.Prefix = crate::btree::TABLE_PREFIX_MIN;
+        rMeta.Set("key".as_bytes(), Value::BYTES("next_prefix".as_bytes().to_vec()));
+
+        let retSearchMeta = self.dbGet( &mut rMeta);
+        if let Ok(v) = retSearchMeta {
+            if(v == true)
+            {
+                let v =rMeta.Get("val".as_bytes());
+                if let Some( Value::BYTES(str)) = v
+                {
+                        tdef.Prefix = u32::from_le_bytes(str.try_into().unwrap());
+                }
+            }
+        }
+
+        tdef.Prefix += 1;
+
+        let nPrefix: u32 = tdef.Indexes.len() as u32 + tdef.Prefix as u32 + 1;
+        rMeta.Set("val".as_bytes(), Value::BYTES(nPrefix.to_le_bytes().to_vec()));
+        self.dbUpdate(&mut rMeta, 0);
+
+        tdef.FixIndexes();
+        // store the definition
+        let str = tdef.Marshal();
+
+        rtable.Set("def".as_bytes(), Value::BYTES(str.as_bytes().to_vec()));
+        self.dbUpdate(&mut rtable, 0);
+
+        Ok(())
+    }
+
+    fn UpdateRecord(&mut self, rec:&mut crate::btree::table::record::Record, mode: u16) -> Result<(),crate::btree::BTreeError> {
+
+        let mut bCheck = rec.checkRecord();
+        if bCheck == false {
+            return Err(BTreeError::ColumnValueMissing);
+        }
+
+        bCheck = rec.checkPrimaryKey();
+        if bCheck == false {
+            return Err(BTreeError::PrimaryKeyIsNotSet);
+        }
+
+        bCheck = rec.checkIndexes();
+        if bCheck == false {
+            return Err(BTreeError::IndexesValueMissing);
+        }
+
+        let mut key:Vec<u8> = Vec::new();
+        rec.encodeKey(rec.def.Prefix, &mut key);
+
+        let mut v:Vec<u8> = Vec::new();
+        rec.encodeValues(&mut v);
+
+        let mut request = InsertReqest::new(&key,&v,mode);
+        self.Set(&mut request);
+
+        if (rec.def.Indexes.len() == 0) || (request.Updated == false) {
+            return Ok(());
+        }
+
+        if (request.Updated == true && request.Added == false) {
+
+            let mut old = Record::new(&rec.def);
+            old.decodeValues(&request.OldValue);
+            old.deencodeKey(&key);
+            self.indexOp(&mut old, INDEX_DEL);
+        }
+
+        if request.Updated {
+            let mut old = Record::new(&rec.def);
+            // old.decodeValues(&key);
+            // old.deencodeKey(&key);
+            self.indexOp(rec, INDEX_ADD);
+        }
+
+        return Ok(());
+    }
+    
+}
+
 
 impl TxReaderInterface for txwriter{
 
@@ -53,6 +196,125 @@ impl TxInterface for txwriter{
 
 impl txwriter{
 
+    fn SeekRecord(&self,idxNumber:i16, cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<TxScanner,BTreeError> {
+        
+        // sanity checks
+        if cmp1.value() > 0 && cmp2.value() < 0 
+        {} 
+        else if cmp2.value() > 0 && cmp1.value() < 0 
+        {} 
+        else {
+            return Err(BTreeError::BadArrange);
+        }
+
+        let mut keyStart: Vec<u8> = Vec::new();
+        let mut keyEnd: Vec<u8> = Vec::new();
+
+        if idxNumber == -1
+        {
+            let bCheck1 = key1.checkPrimaryKey();
+            if  bCheck1 == false {
+                return Err(BTreeError::KeyError);
+            }
+            let bCheck2 = key2.checkPrimaryKey();
+            if  bCheck2 == false {
+                return Err(BTreeError::KeyError);
+            }
+    
+            key1.encodeKey(key1.def.Prefix, &mut keyStart);
+            key2.encodeKey(key2.def.Prefix, &mut keyEnd);
+        }
+        else {
+            key1.encodeKeyPartial(idxNumber as usize,&mut keyStart,);
+            key2.encodeKeyPartial(idxNumber as usize,&mut keyEnd);
+            println!("KeyStart:{:?}  KeyEnd:{:?}",keyStart,keyEnd);
+        }
+
+        let iter = self.Seek(&keyStart, cmp1);
+        if iter.Valid() == false
+        {
+            return Err(BTreeError::NextNotFound);
+        }
+        Ok(
+            TxScanner::new(idxNumber,cmp1,cmp2,keyStart,keyEnd,iter)
+        )
+
+    }
+
+
+    fn indexOp(& mut self, rec: &mut Record, op: u16) -> Result<(),BTreeError> {
+
+        for i in 0..rec.def.Indexes.len(){
+
+            let mut index = Vec::new();
+            rec.encodeIndex(rec.def.IndexPrefixes[i], i, &mut index);
+            //println!("Rec:{}",rec);
+            //println!("Index :{}\n  Vals Result:{:?} ", i, index);
+            if op == INDEX_ADD {
+                let mut request = InsertReqest::new( &index ,&[0;1], MODE_UPSERT);
+                self.Set(&mut request);
+            } 
+            else if op == INDEX_DEL 
+            {
+                let mut reqDelete = DeleteRequest::new(&index);
+                self.Delete(&mut reqDelete);
+            } 
+            else {
+                panic!("bad op value!");
+            }
+        }
+
+        Ok(())
+    }
+
+    
+    // get a single row by the primary key
+    pub fn dbGet(&self,rec:&mut Record)->Result<bool,BTreeError> {
+        let bCheck = rec.checkPrimaryKey();
+        if bCheck == false {
+            return Err(BTreeError::PrimaryKeyIsNotSet);
+        }
+
+        let mut list:Vec<u8> = Vec::new();
+        rec.encodeKey(rec.def.Prefix,&mut list);
+
+        let val = self.Get(&list);
+        match &val {
+            Some(v)=>{
+                rec.decodeValues(&v);
+                return Ok(true);
+            },
+            Other=>{
+                return Ok(false);
+            }
+        }
+    }
+
+    // add a row to the table
+    fn dbUpdate(&mut self, rec:&mut Record, mode: u16) -> Result<(),BTreeError> {
+
+        let mut bCheck = rec.checkRecord();
+        if bCheck == false {
+            return Err(BTreeError::ColumnValueMissing);
+        }
+
+        bCheck = rec.checkPrimaryKey();
+        if bCheck == false {
+            return Err(BTreeError::PrimaryKeyIsNotSet);
+        }
+
+        let mut key:Vec<u8> = Vec::new();
+        rec.encodeKey(rec.def.Prefix, &mut key);
+
+        let mut v:Vec<u8> = Vec::new();
+        rec.encodeValues(&mut v);
+
+        let mut request = InsertReqest::new(&key, &v, mode);
+        self.Set(&mut request);
+        return Ok(());
+    }
+
+    
     fn SeekLE(&self, key:&[u8]) -> TxBIter
     {
         let mut iter = TxBIter::new(&self.context);
@@ -494,12 +756,96 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_btree_memorycontext()
+    fn test_seek()
     {
         let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*2];
         let mut tx = prepaircase_nonefreelist_noneNode(&mut data);
+        let tables = Arc::new(RwLock::new(HashMap::new()));
         let mut txwriter = txwriter{
             context:tx,
+            tables:tables.clone()
+        };
+
+        let mut request = InsertReqest::new("3".as_bytes(), "33333".as_bytes(), crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+        let mut request = InsertReqest::new("1".as_bytes(), "11111".as_bytes(), crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+        let mut request = InsertReqest::new("7".as_bytes(), "77777".as_bytes(), crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+        let mut request = InsertReqest::new("5".as_bytes(), "55555".as_bytes(), crate::btree::MODE_UPSERT);
+        txwriter.Set(&mut request);
+
+        let it = txwriter.Seek("3".as_bytes(), OP_CMP::CMP_LT);
+        let ret = it.Deref();
+        println!("\nLess Then => Key:{} Value:{} \n", String::from_utf8(ret.0.to_vec()).unwrap(), String::from_utf8(ret.1.to_vec()).unwrap());
+    
+        let it2 = txwriter.Seek("3".as_bytes(), OP_CMP::CMP_LE);
+        let ret2 = it2.Deref();
+        println!("Less and Equal => Key:{} Value:{} \n", String::from_utf8(ret2.0.to_vec()).unwrap(), String::from_utf8(ret2.1.to_vec()).unwrap());
+
+        let it3 = txwriter.Seek("3".as_bytes(), OP_CMP::CMP_GT);
+        let ret3 = it3.Deref();
+        println!("Large Than => Key:{} Value:{} \n", String::from_utf8(ret3.0.to_vec()).unwrap(), String::from_utf8(ret3.1.to_vec()).unwrap());
+
+        let it4 = txwriter.Seek("3".as_bytes(), OP_CMP::CMP_GE);
+        let ret4 = it4.Deref();
+        println!("Large and Equal => Key:{} Value:{} \n", String::from_utf8(ret4.0.to_vec()).unwrap(), String::from_utf8(ret4.1.to_vec()).unwrap());
+
+
+        //Test SeekLE
+        let mut itLe = txwriter.SeekLE("3".as_bytes());
+
+        let mut retLe = itLe.Deref();
+        println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+
+        if itLe.Prev() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+    
+        if itLe.Prev() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+
+        if itLe.Prev() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+
+        if itLe.Next() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+        if itLe.Next() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+        if itLe.Next() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+        if itLe.Next() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+        if itLe.Next() {
+            retLe = itLe.Deref();
+            println!("Key:{} Value:{} \n", String::from_utf8(retLe.0.to_vec()).unwrap(), String::from_utf8(retLe.1.to_vec()).unwrap());
+        }
+
+    }
+
+
+    #[test]
+    fn test_txwriter()
+    {
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*2];
+        let mut tx = prepaircase_nonefreelist_noneNode(&mut data);
+        let tables = Arc::new(RwLock::new(HashMap::new()));
+        let mut txwriter = txwriter{
+            context:tx,
+            tables:tables.clone(),
         };
         
         let mut request = InsertReqest::new("1".as_bytes(), &[31;2500], crate::btree::MODE_UPSERT);
@@ -535,12 +881,15 @@ mod tests {
     }
 
     #[test]
-    fn test_setex_deleteex()
+    fn test_set_delete()
     {
         let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*2];
         let mut tx = prepaircase_nonefreelist_noneNode(&mut data);
+        let tables = Arc::new(RwLock::new(HashMap::new()));
+
         let mut txwriter = txwriter{
             context:tx,
+            tables:tables.clone(),
         };
 
         let mut request = InsertReqest::new("3".as_bytes(), "33333".as_bytes(), crate::btree::MODE_UPSERT);
@@ -583,7 +932,6 @@ mod tests {
             &nodes,0,0,1,1);
 
         tx
-
     }
 
 }

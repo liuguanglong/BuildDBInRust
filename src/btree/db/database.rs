@@ -19,29 +19,8 @@ use std::collections::HashMap;
 use super::scanner::Scanner;
 use super::INDEX_ADD;
 use super::INDEX_DEL;
-
-lazy_static! {
-    static ref TDEF_META: TableDef = TableDef{
-        Prefix:1,
-        Name: "@meta".as_bytes().to_vec(),
-        Types : vec![ValueType::BYTES, ValueType::BYTES] ,
-        Cols : vec!["key".as_bytes().to_vec() , "val".as_bytes().to_vec() ] ,
-        PKeys : 0,
-        Indexes : vec![],
-        IndexPrefixes : vec![],
-    };
-
-    static ref TDEF_TABLE: TableDef = TableDef{
-        Prefix:2,
-        Name: "@table".as_bytes().to_vec(),
-        Types : vec![ValueType::BYTES, ValueType::BYTES] ,
-        Cols : vec!["name".as_bytes().to_vec() , "def".as_bytes().to_vec() ] ,
-        PKeys : 0,
-        Indexes : vec![],
-        IndexPrefixes : vec![],
-    };
-}
-
+use super::TDEF_META;
+use super::TDEF_TABLE;
 pub struct DataBase<'a> {
     btree: BTree<'a>,
     tables: HashMap<Vec<u8>,TableDef>,

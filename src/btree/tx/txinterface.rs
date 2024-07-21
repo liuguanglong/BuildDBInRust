@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, kv::{node::BNode, ContextError}, scan::{biter::BIter, comp::OP_CMP}};
-use super::txbiter::TxBIter;
+use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::scanner::Scanner, kv::{node::BNode, ContextError}, scan::{biter::BIter, comp::OP_CMP}, table::{record::Record, table::TableDef}, BTreeError};
+use super::{txScanner::TxScanner, txbiter::TxBIter};
 
 pub trait TxReaderInterface {
     fn Get(&self, key:&[u8])  -> Option<Vec<u8>>;
@@ -31,7 +31,14 @@ pub trait TxContent{
     fn copy(&self)->Vec<u8>;
 }
 
-pub trait TxFreeListInterface{
-    fn GetFreeNode(&self, topN: u16)-> Result<u64,ContextError>;
-    fn UpdateFreeList(&mut self)->Result<(),ContextError>;
+pub trait DBReadInterface{
+    fn Scan(&self, cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<TxScanner,BTreeError>;
+}
+
+pub trait DBTxInterface{
+    fn Scan(&self, cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<TxScanner,BTreeError>;
+    fn DeleteRecord(&mut self, rec:&Record)->Result<bool,BTreeError>;
+    fn AddTable(&mut self, tdef:&mut TableDef)-> Result<(),BTreeError>;
+    fn UpdateRecord(&mut self, rec:&mut Record, mode: u16) -> Result<(),BTreeError>;
+
 }
