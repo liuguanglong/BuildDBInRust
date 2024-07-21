@@ -81,6 +81,14 @@ impl TxContent for WindowsFileContext{
         todo!()
     }
     
+    fn beginread(&mut self)->Result<super::txreader::TxReader,crate::btree::BTreeError> {
+        todo!()
+    }
+    
+    fn endread(&mut self, reader:& super::txreader::TxReader) {
+        todo!()
+    }
+
 }
 
 impl WindowsFileContext{
