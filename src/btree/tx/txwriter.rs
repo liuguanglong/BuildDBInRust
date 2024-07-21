@@ -267,7 +267,51 @@ impl txwriter{
         Ok(())
     }
 
-    
+    //get Table Define
+    fn getTableDefFromDB(&self, name: &[u8])->Option<TableDef> {
+
+        let mut rec = Record::new(&TDEF_TABLE);
+        rec.Set("name".as_bytes(), Value::BYTES(name.to_vec()));
+        let ret = self.dbGet(&mut rec);
+        if let Err(er) = ret
+        {
+            return None;
+        }
+
+        if let Ok(r) = ret{
+            if r == true
+            {
+                let r1 = rec.Get("def".as_bytes());
+                if let Some(Value::BYTES(val)) = r1
+                {
+                    let def: TableDef = serde_json::from_str( &String::from_utf8(val.to_vec()).unwrap()) .unwrap();
+                    return Some(def);
+                }
+            }
+        }
+        return None;
+    }
+
+    pub fn getTableDef(&mut self, name: &[u8]) -> Option<TableDef> {
+
+        if let tbs = self.tables.read().unwrap()
+        {
+            if let Some(def) = tbs.get(name)
+            {
+                return Some(def.clone());
+            }
+        }
+
+        let defParsed =  self.getTableDefFromDB(name);
+        if let Some(def) = defParsed
+        {
+            self.tables.write().unwrap().insert(name.to_vec(), def.clone());
+            return Some(def);
+        }
+
+        return None;
+    }
+
     // get a single row by the primary key
     pub fn dbGet(&self,rec:&mut Record)->Result<bool,BTreeError> {
         let bCheck = rec.checkPrimaryKey();
@@ -752,8 +796,160 @@ impl txwriter{
 mod tests {
 
     use std::sync::{Arc, RwLock};
-    use crate::btree::{tx::{txdemo::Shared, winmmap::Mmap}, BTREE_PAGE_SIZE};
+    use crate::btree::{table::value::ValueType, tx::{txdemo::Shared, winmmap::Mmap}, BTREE_PAGE_SIZE};
     use super::*;
+
+    #[test]
+    fn test_database_byIndexes()
+    {
+        let tables = Arc::new(RwLock::new(HashMap::new()));
+        tables.write().unwrap().insert("@meta".as_bytes().to_vec(),TDEF_META.clone());
+        tables.write().unwrap().insert("@table".as_bytes().to_vec(),TDEF_TABLE.clone());
+
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*2];
+        let mut tx = prepaircase_nonefreelist_noneNode(&mut data);
+        let mut dbinstance = txwriter{
+            context:tx,
+            tables:tables.clone()
+        };
+
+        let mut table = TableDef{
+            Prefix:0,
+            Name: "person".as_bytes().to_vec(),
+            Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
+            Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
+            PKeys : 0,
+            Indexes : vec![vec!["address".as_bytes().to_vec() , "married".as_bytes().to_vec()],vec!["name".as_bytes().to_vec()]],
+            IndexPrefixes : vec![],
+        };
+        //table.FixIndexes();
+
+        let ret = dbinstance.AddTable(&mut table);
+        if let Err(ret) = ret
+        {
+            println!("Error when add table:{}",ret);
+        }
+
+        let ret = dbinstance.getTableDef("person".as_bytes());
+        if let Some(tdef) = ret
+        {
+            println!("Table define:{}",tdef);
+            let mut r = Record::new(&tdef);
+
+            for i in 0..100 {
+                r.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
+                r.Set( "name".as_bytes(), Value::BYTES(format!("Bob{}", i).as_bytes().to_vec()));
+                r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+                r.Set("age".as_bytes(), Value::INT16(20));
+                r.Set("married".as_bytes(), Value::BOOL(false));
+
+                dbinstance.UpdateRecord(&mut r,crate::btree::MODE_UPSERT);
+            }
+
+            r.Set("id".as_bytes(), Value::BYTES(("21").as_bytes().to_vec()));
+            r.Set( "name".as_bytes(), Value::BYTES(("Bob504").as_bytes().to_vec()));
+            r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+            r.Set("age".as_bytes(), Value::INT16(20));
+            r.Set("married".as_bytes(), Value::BOOL(false));
+
+            dbinstance.UpdateRecord(&mut r,crate::btree::MODE_UPSERT);
+
+
+            r.Set("id".as_bytes(), Value::BYTES(("22").as_bytes().to_vec()));
+            dbinstance.DeleteRecord(&mut r);
+
+            let mut key1 = Record::new(&tdef);
+            let mut key2 = Record::new(&tdef);
+            key1.Set("name".as_bytes(), Value::BYTES("Bob1".as_bytes().to_vec()));
+            key2.Set("name".as_bytes(), Value::BYTES("Bob5".as_bytes().to_vec()));
+            //let mut scanner = dbinstance.Seek(1,OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
+            let mut scanner = dbinstance.Scan(OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
+    
+            let mut r3 = Record::new(&tdef);
+            match &mut scanner {
+                Ok(cursor) =>{
+                    while cursor.Valid(){
+                            cursor.Deref(&dbinstance,&mut r3);
+                            println!("{}", r3);
+                            cursor.Next();
+                        }                
+                },
+                Err(err) => { println!("Error when add table:{}",err)}
+                
+            }    
+        }
+    }
+
+    #[test]
+    fn test_table()
+    {
+        let tables = Arc::new(RwLock::new(HashMap::new()));
+        tables.write().unwrap().insert("@meta".as_bytes().to_vec(),TDEF_META.clone());
+        tables.write().unwrap().insert("@table".as_bytes().to_vec(),TDEF_TABLE.clone());
+
+        let mut data: Vec<u8> = vec![0; BTREE_PAGE_SIZE*2];
+        let mut tx = prepaircase_nonefreelist_noneNode(&mut data);
+        let mut txwriter = txwriter{
+            context:tx,
+            tables:tables.clone()
+        };
+
+
+        let mut table = TableDef{
+            Prefix:0,
+            Name: "person".as_bytes().to_vec(),
+            Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
+            Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
+            PKeys : 0,
+            Indexes : vec![vec!["address".as_bytes().to_vec() , "married".as_bytes().to_vec()],vec!["age".as_bytes().to_vec()]],
+            IndexPrefixes : vec![],
+        };
+        //table.FixIndexes();
+
+        let ret = txwriter.AddTable(&mut table);
+        assert!(ret.is_ok());
+        if let Err(ret) = ret
+        {
+            println!("Error when add table:{}",ret);
+        }
+
+        let ret = txwriter.getTableDef("person".as_bytes());
+        if let Some(tdef1) = ret
+        {
+            //println!("Table define:{}",tdef);
+            let mut r = Record::new(&tdef1);
+
+            for i in 0..100 {
+                r.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
+                r.Set( "name".as_bytes(), Value::BYTES(format!("Bob{}", i).as_bytes().to_vec()));
+                r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+                r.Set("age".as_bytes(), Value::INT16(20));
+                r.Set("married".as_bytes(), Value::BOOL(false));
+
+                txwriter.UpdateRecord(&mut r, MODE_UPSERT);
+            }
+    
+            let mut key1 = Record::new(&tdef1);
+            let mut key2 = Record::new(&tdef1);
+            key1.Set("id".as_bytes(), Value::BYTES("2".as_bytes().to_vec()));
+            key2.Set("id".as_bytes(), Value::BYTES("5".as_bytes().to_vec()));
+            let mut scanner = txwriter.SeekRecord(-1,OP_CMP::CMP_GE, OP_CMP::CMP_LE, &key1, &key2);
+    
+            let mut r3 = Record::new(&tdef1);
+            match &mut scanner {
+                Ok(cursor) =>{
+                    while cursor.Valid(){
+                            cursor.Deref(&txwriter,&mut r3);
+                            println!("{}", r3);
+                            cursor.Next();
+                        }                
+                },
+                Err(err) => { println!("Error Get Cursor:{}",err)}
+                
+            }
+    
+        }
+    }
 
     #[test]
     fn test_seek()
