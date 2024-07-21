@@ -8,4 +8,3 @@ mod winmmap;
 mod txfreelist;
 mod tx;
 mod txwriter;
-mod closuerdemo;

@@ -4,10 +4,15 @@ use super::{txfreelist::TxFreeList, txinterface::TxReadContext, txreader::TxRead
 
 pub struct Tx{
     pub freelist:TxFreeList,
-    pub reader:TxReader,
     pub pageflushed: u64, // database size in number of pages
     pub nappend: u16, //number of pages to be appended
     pub root:u64,
+
+    //pub reader:TxReader,
+    len:usize,
+    data:Arc<RwLock<Mmap>>,
+    version:u64,
+    index:u64,
 }
 
 impl TxReadContext for Tx{
@@ -28,13 +33,7 @@ impl TxReadContext for Tx{
             },
             Other=>
             {
-                if let Some(n) = self.reader.get(key)
-                {
-                    Some(n)
-                }
-                else {
-                    None
-                }
+                self.getMapped(key)
             },
         }
     }
@@ -44,9 +43,12 @@ impl Tx{
     pub fn new(data:Arc<RwLock<Mmap>>,root:u64,pageflushed:u64,filelen:usize,readerindex:u64,readerversion:u64,
         freenodes:&Vec<u64>,freehead:u64,freetotal:usize,offset:usize,version:u64,minReader:u64)->Self
     {
-        let mut reader = TxReader::new(data, filelen,readerversion,readerindex);
+        //let mut reader = TxReader::new(data, filelen,readerversion,readerindex);
         Tx{
-            reader: reader,
+            data: data,
+            len:filelen,
+            version:readerversion,
+            index:readerindex,
             freelist: TxFreeList::new(freehead,version,minReader,freenodes,freetotal),
             pageflushed:pageflushed,
             nappend:0,
@@ -253,6 +255,28 @@ impl Tx{
         return ver < minReader;
     }
 
+    
+    fn getMapped(&self,key:u64) -> Option<BNode>
+    {
+        let offset = key as usize * BTREE_PAGE_SIZE;
+        assert!(offset + BTREE_PAGE_SIZE <= self.len);
+        
+        if let Ok(mmap) = self.data.read(){
+
+            let mut newNode = BNode::new(BTREE_PAGE_SIZE);
+            //println!("index:{}",key);
+            newNode.copy_Content(mmap.ptr, offset, BTREE_PAGE_SIZE);
+            drop(mmap);
+            //newNode.copy_Data(&self.data,offset,BTREE_PAGE_SIZE);
+            //newNode.print();
+            return Some(newNode);    
+
+        }
+        println!("Get Lock Error!");
+        None
+    }
+
+
     fn loadCache(&mut self)
     {
         if self.freelist.data.nodes.len() != 0
@@ -260,7 +284,7 @@ impl Tx{
             return; 
         }
 
-        let node = self.reader.get(self.freelist.data.head).unwrap();
+        let mut node = self.getMapped(self.freelist.data.head).unwrap();
         self.freelist.data.nodes.push(self.freelist.data.head);
         self.freelist.data.total = node.flnGetTotal() as usize;
         self.freelist.data.offset = node.flnSize() as usize;
@@ -268,6 +292,7 @@ impl Tx{
         while next != 0
         {
             self.freelist.data.nodes.push(next);
+            node = self.getMapped(next).unwrap();
             next = node.flnNext();
         }        
     }

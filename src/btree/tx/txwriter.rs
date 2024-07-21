@@ -1,6 +1,6 @@
-use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}};
+use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, scan::comp::OP_CMP};
 
-use super::{tx::{self, Tx}, txinterface::{TxInterface, TxReadContext, TxReaderInterface}};
+use super::{tx::{self, Tx}, txbiter::TxBIter, txinterface::{TxInterface, TxReadContext, TxReaderInterface}};
 
 
 pub struct txwriter{
@@ -10,11 +10,33 @@ pub struct txwriter{
 impl TxReaderInterface for txwriter{
 
     fn Get(&self, key:&[u8])  -> Option<Vec<u8>> {
-        self.context.reader.Get(key)
+        let rootNode = self.context.get(self.context.get_root());
+        match rootNode{
+            Some(root) => return self.treeSearch(&root,key),
+            None => return None
+        }
     }
 
     fn Seek(&self, key:&[u8], cmp:crate::btree::scan::comp::OP_CMP) -> super::txbiter::TxBIter {
-        self.context.reader.Seek(key, cmp)
+        let mut iter = self.SeekLE(key);
+        if iter.Valid() {
+            if let OP_CMP::CMP_LE = cmp  
+            {
+                return iter;
+            }
+
+            let cur = iter.Deref();
+            if crate::btree::scan::comp::cmpOK(cur.0, key, &cmp) == false {
+                //off by one
+                if cmp.value() > 0 {
+                    _ = iter.Next();
+                } else {
+                    _ = iter.Prev();
+                }
+                return iter;
+            }
+        }
+        return iter;
     }
 }
 
@@ -30,6 +52,61 @@ impl TxInterface for txwriter{
 }
 
 impl txwriter{
+
+    fn SeekLE(&self, key:&[u8]) -> TxBIter
+    {
+        let mut iter = TxBIter::new(&self.context);
+
+        let mut ptr = self.context.get_root();
+        let mut n = self.context.get(ptr).unwrap();
+        let mut idx: usize = 0;
+        while (ptr != 0) {
+            n = self.context.get(ptr).unwrap();
+            idx = n.nodeLookupLE(key) as usize;
+
+            if n.btype() == crate::btree::BNODE_NODE {
+                ptr = n.get_ptr(idx);
+            } else {
+                ptr = 0;
+            }
+
+            iter.path.push(n);
+            iter.pos.push(idx);
+        }
+        iter.valid = true;
+        return iter;
+    }
+    
+     // Search a key from the tree
+     fn treeSearch<T:BNodeReadInterface>(&self, treenode: &T, key: &[u8]) -> Option<Vec<u8>> {
+        // where to find the key?
+        let idx = treenode.nodeLookupLE(key);
+        // act depending on the node type
+        match  treenode.btype() {
+            crate::btree::BNODE_LEAF => {
+                // leaf, node.getKey(idx) <= key
+                let key1 = treenode.get_key(idx);
+                let comp = crate::btree::util::compare_arrays(key, key1);
+                if  comp == 0 {
+                    return Some(treenode.get_val(idx).to_vec());
+                } else {
+                    // not found
+                    return None;
+                }
+            },
+            crate::btree::BNODE_NODE => {
+                let ptr = treenode.get_ptr(idx as usize);
+                let subNode = self.context.get(ptr);
+                match subNode{
+                    Some(node) => {
+                        return self.treeSearch(&node,key);
+                    } 
+                    None => return None
+                }
+            },
+            other=> return None
+        }
+    }
 
     fn DeleteKV(&mut self, request: &mut DeleteRequest) -> bool
     {
