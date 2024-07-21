@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::scanner::Scanner, kv::{node::BNode, ContextError}, scan::{biter::BIter, comp::OP_CMP}, table::{record::Record, table::TableDef}, BTreeError};
-use super::{txScanner::TxScanner, txbiter::TxBIter};
+use super::{txScanner::TxScanner, txbiter::TxBIter, txwriter::txwriter};
 
 pub trait TxReaderInterface {
     fn Get(&self, key:&[u8])  -> Option<Vec<u8>>;
@@ -28,7 +28,9 @@ pub trait TxWriteContext{
 pub trait TxContent{
     fn open(&mut self)->Result<(),ContextError>;
     fn save(&mut self,updates:&HashMap<u64,Option<BNode>>)->Result<(), ContextError>;
-    fn copy(&self)->Vec<u8>;
+    fn begin(&mut self)->Result<txwriter,BTreeError>;
+    fn commmit(&mut self, tx:&mut txwriter)->Result<(),BTreeError>;
+    fn abort(&mut self,tx:&mut txwriter);
 }
 
 pub trait DBReadInterface{

@@ -68,15 +68,19 @@ impl TxContent for WindowsFileContext{
             Ok(())
         }
     }
-
-    fn copy(&self)->Vec<u8> {
-        let mut context:Vec<u8> = Vec::with_capacity(self.fileSize as usize);
-        unsafe {
-            std::ptr::copy_nonoverlapping(self.lpBaseAddress as *mut u8, context.as_mut_ptr(), self.fileSize as usize);
-        };
-        context
+    
+    fn begin(&mut self)->Result<super::txwriter::txwriter,crate::btree::BTreeError> {
+        todo!()
     }
-
+    
+    fn commmit(&mut self, tx:&mut super::txwriter::txwriter)->Result<(),crate::btree::BTreeError> {
+        todo!()
+    }
+    
+    fn abort(&mut self,tx:&mut super::txwriter::txwriter) {
+        todo!()
+    }
+    
 }
 
 impl WindowsFileContext{
