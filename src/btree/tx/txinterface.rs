@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::{Arc, RwLock}};
 
 use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::scanner::Scanner, kv::{node::BNode, ContextError}, scan::{biter::BIter, comp::OP_CMP}, table::{record::Record, table::TableDef}, BTreeError};
-use super::{txScanner::TxScanner, txbiter::TxBIter, txreader::{self, TxReader}, txwriter::txwriter};
+use super::{tx::Tx, txScanner::TxScanner, txbiter::TxBIter, txreader::{self, TxReader}, txwriter::txwriter, winmmap::Mmap};
 
 pub trait TxReaderInterface {
     fn Get(&self, key:&[u8])  -> Option<Vec<u8>>;
@@ -28,10 +28,10 @@ pub trait TxWriteContext{
 pub trait TxContent<'a>{
     fn open(&mut self)->Result<(),ContextError>;
     fn save(&mut self,updates:&HashMap<u64,Option<BNode>>)->Result<(), ContextError>;
-    fn begin(&'a mut self)->Result<txwriter,BTreeError>;
-    fn commmit(&'a mut self, tx:&mut txwriter)->Result<(),BTreeError>;
+    fn begin(&'a mut self)->Result<txwriter,ContextError>;
+    fn commmit(&'a mut self, tx:&mut txwriter)->Result<(),ContextError>;
     fn abort(&'a mut self,tx:&mut txwriter);
-    fn beginread(&mut self)->Result<TxReader,BTreeError>;
+    fn beginread(&mut self)->Result<TxReader,ContextError>;
     fn endread(&mut self, reader:& TxReader);
 }
 
@@ -44,5 +44,13 @@ pub trait DBTxInterface{
     fn DeleteRecord(&mut self, rec:&Record)->Result<bool,BTreeError>;
     fn AddTable(&mut self, tdef:&mut TableDef)-> Result<(),BTreeError>;
     fn UpdateRecord(&mut self, rec:&mut Record, mode: u16) -> Result<(),BTreeError>;
-
 }
+
+pub trait MmapInterface{
+    fn getMmap(&mut self)->Arc<RwLock<Mmap>>;
+    fn getContextSize(&self)->usize;
+    fn extendContext(&mut self,pageCount:usize)->Result<(),ContextError>;
+    fn extendPages(&mut self,totalpages:usize) -> Result<(),ContextError>;
+    fn syncContext(&mut self) -> Result<(),ContextError>;
+}
+

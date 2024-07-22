@@ -22,6 +22,7 @@ pub enum ContextError{
     NodeNotFound,
     RootNotFound,
     
+    CreateReaderError,
 }
 
 // 实现 fmt::Display 特征
@@ -37,8 +38,9 @@ impl fmt::Display for ContextError {
             ContextError::FlushFileBUffersError => write!(f,"Exception occured when trying to flush content of file buffer!"),
             ContextError::NotDataBaseFile => write!(f,"Exception occured when trying to load database file! It's not a database file!"),
             ContextError::LoadDataException => write!(f,"Exception occured when trying to load database file! File content is wrong!"),
-            ContextError::NodeNotFound => write!(f,"Exception occured when trying to get node!"),
             ContextError::RootNotFound => write!(f,"Exception occured when trying to get root node!"),
+            ContextError::NodeNotFound => write!(f,"Exception occured when trying to get node!"),
+            ContextError::CreateReaderError => write!(f,"Get Reader Error!"),
         }
     }
 }

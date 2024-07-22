@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 use crate::btree::kv::node::BNode;
 use crate::btree::kv::nodeinterface::{BNodeFreeListInterface, BNodeReadInterface, BNodeWriteInterface};
 use crate::btree::kv::{ContextError, BTREE_PAGE_SIZE, DB_SIG};
+use crate::btree::BTreeError;
 #[cfg(windows)]extern crate ntapi;
 use ntapi::ntmmapi::{NtExtendSection,NtUnmapViewOfSection,NtMapViewOfSection,NtCreateSection,ViewUnmap,};
 use winapi::shared::ntdef::{HANDLE, LARGE_INTEGER, NT_SUCCESS};
@@ -21,7 +22,11 @@ use winapi::um::handleapi::INVALID_HANDLE_VALUE;
 use winapi::um::winnt::{ FILE_ATTRIBUTE_NORMAL, GENERIC_READ, GENERIC_WRITE, MEM_RESERVE, PAGE_READWRITE, SECTION_EXTEND_SIZE, SECTION_MAP_READ, SECTION_MAP_WRITE, SEC_COMMIT};
 use winapi::um::fileapi::{CREATE_NEW, OPEN_EXISTING,OPEN_ALWAYS};
 
+use super::tx::Tx;
 use super::txdemo::Shared;
+use super::txinterface::MmapInterface;
+use super::txreader::TxReader;
+use super::txwriter::txwriter;
 
 #[derive(Debug)]
 pub struct Mmap{
@@ -33,21 +38,21 @@ unsafe impl Sync for Mmap {}
 
 #[derive(Debug)]
 pub struct WinMmap {
-    pub fHandle: HANDLE,
-    pub hSection: HANDLE,
-    pub mmap:Arc<RwLock<Mmap>>,
+    fHandle: HANDLE,
+    hSection: HANDLE,
+    mmap:Arc<RwLock<Mmap>>,
     //lpBaseAddress: *mut winapi::ctypes::c_void,
-    pub fileSize:i64,
-    pub dwPageSize:usize,
+    fileSize:i64,
+    dwPageSize:usize,
 
     pub root: u64,
-    pub pageflushed: u64, // database size in number of pages
-    pub nfreelist: u16, //number of pages taken from the free list
     pub nappend: u16, //number of pages to be appended
     pub freehead: u64, //head of freeelist
     pub version:u64, //verison of db data
-}
 
+    pageflushed: u64, // database size in number of pages
+    nfreelist: u16, //number of pages taken from the free list
+}
 
 impl Drop for WinMmap {
     fn drop(&mut self) {
@@ -70,16 +75,6 @@ impl Drop for WinMmap {
 impl WinMmap{
 
     #[inline]
-    pub fn as_ptr(&self) -> *const u8 {
-        self.mmap.read().unwrap().ptr
-    }
-
-    #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.mmap.read().unwrap().ptr
-    }
-
-    #[inline]
     pub fn size(&self) -> usize {
         self.fileSize as usize
     }
@@ -89,6 +84,30 @@ impl WinMmap{
         self.mmap.clone()
     }
 
+    pub fn createReader(&mut self,index:usize)->Result<TxReader,ContextError>
+    {  
+        let reader = TxReader::new(
+            self.mmap.clone(),
+            self.fileSize as usize,
+            self.version,
+            index
+        );
+
+        Ok(reader)
+    }
+
+    pub fn createTx(&mut self)->Result<Tx,ContextError>
+    {
+        let tx = Tx::new(self.mmap.clone(),
+            self.root,self.pageflushed,            
+            self.fileSize as usize, 
+            self.freehead,
+            self.version, self.version
+        );
+
+        Ok(tx)
+    }
+    
     pub fn new(fileName: &[u8], pageSize: usize, maxPageCount: usize) -> Result<Self,ContextError> {
 
         let name = CString::new(fileName).expect("CString::new failed");
@@ -169,7 +188,7 @@ impl WinMmap{
         })
     }
 
-    pub fn syncFile(&mut self) -> Result<(),ContextError> {
+    fn syncFile(&mut self) -> Result<(),ContextError> {
 
         unsafe{
             if  FlushViewOfFile(self.mmap.read().unwrap().ptr as *mut winapi::ctypes::c_void, 0) == 0 {
@@ -185,7 +204,7 @@ impl WinMmap{
         Ok(())
     }
 
-        // the master page format.
+    // the master page format.
     // it contains the pointer to the root and other important bits.
     // | sig | btree_root | page_used |
     // | 16B | 8B | 8B |
@@ -371,7 +390,7 @@ impl WinMmap{
         Ok(())
     }
 
-    pub fn extendPages(&mut self,npages:i64) -> Result<(),ContextError>{
+    fn extendPages(&mut self,npages:i64) -> Result<(),ContextError>{
 
         let mut filePages: i64 = self.fileSize / BTREE_PAGE_SIZE as i64;
         if filePages >= npages 
@@ -399,7 +418,7 @@ impl WinMmap{
         }
     }
 
-    pub fn extendFile(&mut self, pageCount: usize) -> Result<(),ContextError>{
+    fn extendFile(&mut self, pageCount: usize) -> Result<(),ContextError>{
 
         let mut SectionSize: LARGE_INTEGER = unsafe { std::mem::zeroed() };
         unsafe {

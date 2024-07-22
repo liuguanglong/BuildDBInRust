@@ -5,6 +5,7 @@ use crate::btree::db::{TDEF_META, TDEF_TABLE};
 use crate::btree::kv::node::BNode;
 use crate::btree::kv::{ContextError, BTREE_PAGE_SIZE, DB_SIG};
 use crate::btree::table::table::TableDef;
+use crate::btree::BTreeError;
 
 use super::tx::Tx;
 use super::txdemo::Shared;
@@ -52,32 +53,28 @@ impl<'a> TxContent<'a> for WindowsFileContext<'a>{
         }
     }
     
-    fn begin(&'a mut self)->Result<super::txwriter::txwriter,crate::btree::BTreeError> {
+    fn begin(&'a mut self)->Result<super::txwriter::txwriter,ContextError> {
         
         self.lock = Some(self.writer.lock().unwrap());
-        let tx = Tx::new(self.context.mmap.clone(),
-            self.context.root,self.context.pageflushed,            
-            self.context.fileSize as usize, 
-            self.context.freehead,
-            self.context.version, self.context.version);
-
-        
+        let tx =self.context.createTx().unwrap();
         if self.readers.len() > 0 
         {
             self.context.version = self.readers[0];
         }
     
         let lock = self.reader.lock();
+        defer! {
+            drop(lock);
+        }
         let mut txwriter = txwriter{
             context:tx,
             tables:self.tables.clone(),
         };
-        drop(lock);
 
         Ok(txwriter)
     }
     
-    fn commmit(&'a mut self, tx:&mut super::txwriter::txwriter)->Result<(),crate::btree::BTreeError> {
+    fn commmit(&'a mut self, tx:&mut super::txwriter::txwriter)->Result<(),ContextError> {
         self.context.writePages(&tx.context.freelist.updates);
         self.context.nappend = tx.context.nappend;
         self.context.freehead = tx.context.freelist.data.head;
@@ -106,18 +103,22 @@ impl<'a> TxContent<'a> for WindowsFileContext<'a>{
         }
     }
     
-    fn beginread(&mut self)->Result<super::txreader::TxReader,crate::btree::BTreeError> {
+    fn beginread(&mut self)->Result<super::txreader::TxReader,ContextError> {
         let lock = self.reader.lock();
-        let index = self.readers.len();
-        let reader = TxReader::new(
-            self.context.mmap.clone(),
-            self.context.fileSize as usize,
-            self.context.version,
-            index);
+        defer! {
+            drop(lock);
+        }
 
-        self.readers.push(self.context.version);
-        drop(lock);
-        Ok(reader)        
+        let index = self.readers.len();
+        let reader = self.context.createReader(index);
+        if let Ok(r) = reader
+        {
+            self.readers.push(self.context.version);
+            return Ok(r);        
+        }
+        else {
+            return Err(ContextError::CreateReaderError);
+        }
     }
     
     fn endread(&mut self, reader:& super::txreader::TxReader) {

@@ -9,3 +9,5 @@ mod txfreelist;
 mod tx;
 mod txwriter;
 mod txScanner;
+mod dbcontext;
+mod memoryContext;
