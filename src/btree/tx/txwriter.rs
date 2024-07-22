@@ -6,8 +6,8 @@ use super::{tx::{self, Tx}, txScanner::{self, TxScanner}, txbiter::TxBIter, txin
 
 
 pub struct txwriter{
-    context : Tx,
-    tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>,
+    pub context : Tx,
+    pub tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>,
 }
 
 impl DBTxInterface for txwriter{
@@ -1123,9 +1123,8 @@ mod tests {
         let data_ptr: *mut u8 = data.as_mut_ptr();
         let mmap = Mmap { ptr: data_ptr, writer: Shared::new(())};
         let mmap =  Arc::new(RwLock::new(mmap));
-        let mut nodes = Vec::new();
         let tx = Tx::new(mmap,1,2,BTREE_PAGE_SIZE * 2, 
-            &nodes,0,0,1,1);
+            0,1,1);
 
         tx
     }

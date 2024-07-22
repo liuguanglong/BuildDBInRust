@@ -12,18 +12,18 @@ pub struct FreeListData{
     pub offset:usize,
 }
 impl FreeListData {
-    pub fn new(head:u64,nodes:&Vec<u64>,total:usize)->Self
+    pub fn new(head:u64)->Self
     {
-        let mut n:Vec<u64> = Vec::with_capacity(nodes.len());
-        for i in nodes
-        {
-            n.push(i.clone());
-        }
+        // let mut n:Vec<u64> = Vec::with_capacity(nodes.len());
+        // for i in nodes
+        // {
+        //     n.push(i.clone());
+        // }
 
         FreeListData{
             head:head,
-            nodes:n,
-            total:total,
+            nodes:Vec::new(),
+            total:0,
             offset:0,
         }
     }
@@ -42,10 +42,10 @@ pub struct TxFreeList{
 }
 
 impl TxFreeList{
-    pub fn new(head:u64,version:u64,minReader:u64,nodes:&Vec<u64>,total:usize)->Self
+    pub fn new(head:u64,version:u64,minReader:u64)->Self
     {
         TxFreeList{
-            data: FreeListData::new(head,nodes,total),
+            data: FreeListData::new(head),
             version:version,
             minReader:minReader,
             updates: HashMap::new(),
@@ -272,8 +272,7 @@ mod tests {
         let data_ptr: *mut u8 = data.as_mut_ptr();
         let mmap = Mmap { ptr: data_ptr, writer: Shared::new(())};
         let mmap =  Arc::new(RwLock::new(mmap));
-        let mut nodes = Vec::new();
-        let tx = Tx::new(mmap,1,11,BTREE_PAGE_SIZE * 15, &nodes,0,
+        let tx = Tx::new(mmap,1,11,BTREE_PAGE_SIZE * 15, 
             0,1,1);
 
         tx
@@ -316,7 +315,7 @@ mod tests {
             //println!("Free Node Key:{}  Next:{}",10 + i + 1, n.flnNext());
             if i== 0
             {
-                n.flnSetTotal(8);
+                n.flnSetTotal(12);
                 //n.print();
             }
             freenodes.push(n);
@@ -351,9 +350,8 @@ mod tests {
         nodes.push(14);
  
         let tx = Tx::new(mmap,1,15,BTREE_PAGE_SIZE * 15,
-           &nodes,
-            11,12,3,minReaderVersion);
-
+           11,3,minReaderVersion);
+        
         tx
     }
 }

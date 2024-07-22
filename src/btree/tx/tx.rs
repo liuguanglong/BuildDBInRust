@@ -39,17 +39,19 @@ impl TxReadContext for Tx{
 
 impl Tx{
     pub fn new(data:Arc<RwLock<Mmap>>,root:u64,pageflushed:u64,filelen:usize,
-        freenodes:&Vec<u64>,freehead:u64,freetotal:usize,version:u64,minReader:u64)->Self
+        freehead:u64,version:u64,minReader:u64)->Self
     {
         //let mut reader = TxReader::new(data, filelen,readerversion,readerindex);
-        Tx{
+        let mut tx = Tx{
             data: data,
             len:filelen,
-            freelist: TxFreeList::new(freehead,version,minReader,freenodes,freetotal),
+            freelist: TxFreeList::new(freehead,version,minReader),
             pageflushed:pageflushed,
             nappend:0,
             root:root,
-        }
+        };
+        tx.loadCache();
+        tx
     }
 
     // try to remove an item from the tail. returns 0 on failure.
@@ -275,7 +277,7 @@ impl Tx{
 
     fn loadCache(&mut self)
     {
-        if self.freelist.data.nodes.len() != 0
+        if self.freelist.data.nodes.len() != 0 || self.freelist.data.head == 0
         {
             return; 
         }
@@ -283,7 +285,7 @@ impl Tx{
         let mut node = self.getMapped(self.freelist.data.head).unwrap();
         self.freelist.data.nodes.push(self.freelist.data.head);
         self.freelist.data.total = node.flnGetTotal() as usize;
-        self.freelist.data.offset = node.flnSize() as usize;
+        //self.freelist.data.offset = node.flnSize() as usize;
         let mut next = node.flnNext();
         while next != 0
         {

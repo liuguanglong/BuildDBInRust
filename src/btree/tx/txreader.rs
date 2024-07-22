@@ -6,8 +6,8 @@ use super::{txScanner::TxScanner, txbiter::TxBIter, txinterface::{DBReadInterfac
 pub struct TxReader{
     data:Arc<RwLock<Mmap>>,
     root: u64,
-    version:u64,
-    index:u64,
+    pub version:u64,
+    pub index:usize,
     len:usize
 }
 
@@ -24,7 +24,7 @@ impl DBReadInterface for TxReader{
 }
 
 impl TxReader{
-    pub fn new(data:Arc<RwLock<Mmap>>,len:usize,version:u64,index:u64) -> TxReader{
+    pub fn new(data:Arc<RwLock<Mmap>>,len:usize,version:u64,index:usize) -> TxReader{
         TxReader{
             data:data,
             len:len,
