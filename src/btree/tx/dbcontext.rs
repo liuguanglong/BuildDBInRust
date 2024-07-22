@@ -199,10 +199,9 @@ impl<'a> DbContext<'a>{
         }
     }
 
-    pub fn writePages(&mut self,updates:&HashMap<u64,Option<BNode>>)->Result<(),ContextError>{
+    pub fn writePages(&mut self,updates:&HashMap<u64,Option<BNode>>,totalPages:usize)->Result<(),ContextError>{
 
-        let nPages: usize = (self.pageflushed + self.nappend as u64) as usize;
-        self.mmapObj.extendPages(nPages);
+        self.mmapObj.extendPages(totalPages);
 
         for entry in updates
         {

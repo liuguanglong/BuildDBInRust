@@ -149,9 +149,7 @@ impl DBTxInterface for txwriter{
     
 }
 
-
 impl TxReaderInterface for txwriter{
-
     fn Get(&self, key:&[u8])  -> Option<Vec<u8>> {
         let rootNode = self.context.get(self.context.get_root());
         match rootNode{

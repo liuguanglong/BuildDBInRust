@@ -25,12 +25,11 @@ pub trait TxWriteContext{
     fn getUpdates(&self) -> &HashMap<u64,Option<BNode>>;
 }
 
-pub trait TxContent<'a>{
+pub trait TxContent{
     fn open(&mut self)->Result<(),ContextError>;
-    fn save(&mut self,updates:&HashMap<u64,Option<BNode>>)->Result<(), ContextError>;
-    fn begin(&'a mut self)->Result<txwriter,ContextError>;
-    fn commmit(&'a mut self, tx:&mut txwriter)->Result<(),ContextError>;
-    fn abort(&'a mut self,tx:&mut txwriter);
+    fn begin(& mut self)->Result<txwriter,ContextError>;
+    fn commmit(& mut self, tx:&mut txwriter)->Result<(),ContextError>;
+    fn abort(& mut self,tx:&txwriter);
     fn beginread(&mut self)->Result<TxReader,ContextError>;
     fn endread(&mut self, reader:& TxReader);
 }

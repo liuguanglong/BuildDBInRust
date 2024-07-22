@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, MutexGuard, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
 use crate::btree::db::{TDEF_META, TDEF_TABLE};
 use crate::btree::kv::node::BNode;
@@ -15,26 +15,21 @@ use super::txwriter::txwriter;
 use super::winmmap::{self, Mmap, WinMmap};
 use scopeguard::defer;
 
-pub struct WindowsFileContext<'a> {
+pub struct WindowsFileContext{
     context:WinMmap,
     tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>,
-    writer:Shared<()>,
-    reader:Shared<()>,
-    lock: Option<MutexGuard<'a,()>>,
+    writer: Shared<()>,
+    reader: Shared<()>,
+    lock: Option<MutexGuard<'static,()>>,
     readers: Vec<u64>,
 }
 
-impl<'a> Drop for WindowsFileContext<'a> {
+impl Drop for WindowsFileContext {
     fn drop(&mut self) {
-        if let Some(l) = &self.lock
-        {
-            drop(l);
-            self.lock = None;
-        }
     }
 }
 
-impl<'a> TxContent<'a> for WindowsFileContext<'a>{
+impl TxContent for WindowsFileContext{
 
     fn open(&mut self)->Result<(),crate::btree::kv::ContextError> {
         self.context.masterload();
@@ -42,20 +37,12 @@ impl<'a> TxContent<'a> for WindowsFileContext<'a>{
         self.tables.write().unwrap().insert("@table".as_bytes().to_vec(),TDEF_TABLE.clone());
         Ok(())
     }
-
-    fn save(&mut self,updats:&HashMap<u64,Option<BNode>>)->Result<(), crate::btree::kv::ContextError> {
-        if let Err(err) = self.context.writePages(updats)
-        {
-            return Err(err);
-        }
-        else {
-            Ok(())
-        }
-    }
     
-    fn begin(&'a mut self)->Result<super::txwriter::txwriter,ContextError> {
+    fn begin(& mut self)->Result<super::txwriter::txwriter,ContextError> {
         
-        self.lock = Some(self.writer.lock().unwrap());
+        let guard = self.writer.lock().unwrap();
+        let static_guard: MutexGuard<'static, ()> = unsafe { std::mem::transmute(guard) };
+        self.lock = Some(static_guard);
         let tx =self.context.createTx().unwrap();
         if self.readers.len() > 0 
         {
@@ -74,7 +61,7 @@ impl<'a> TxContent<'a> for WindowsFileContext<'a>{
         Ok(txwriter)
     }
     
-    fn commmit(&'a mut self, tx:&mut super::txwriter::txwriter)->Result<(),ContextError> {
+    fn commmit(& mut self, tx:&mut super::txwriter::txwriter)->Result<(),ContextError> {
         self.context.writePages(&tx.context.freelist.updates);
         self.context.nappend = tx.context.nappend;
         self.context.freehead = tx.context.freelist.data.head;
@@ -95,7 +82,7 @@ impl<'a> TxContent<'a> for WindowsFileContext<'a>{
         Ok(())
     }
     
-    fn abort(&'a mut self,tx:&mut super::txwriter::txwriter) {
+    fn abort(& mut self,tx:& super::txwriter::txwriter) {
         if let Some(l) = &self.lock
         {
             drop(l);
@@ -129,7 +116,7 @@ impl<'a> TxContent<'a> for WindowsFileContext<'a>{
 
 }
 
-impl<'a> WindowsFileContext<'a>{
+impl WindowsFileContext{
 
     pub fn new(fileName: &[u8], pageSize: usize, maxPageCount: usize) -> Result<Self,ContextError> {
 

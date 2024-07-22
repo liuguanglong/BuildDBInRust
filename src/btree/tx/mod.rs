@@ -11,3 +11,4 @@ mod txwriter;
 mod txScanner;
 mod dbcontext;
 mod memoryContext;
+mod database;
