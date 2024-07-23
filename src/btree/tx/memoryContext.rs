@@ -4,7 +4,8 @@ use crate::btree::kv::{nodeinterface::BNodeReadInterface, ContextError};
 
 use super::{txdemo::Shared, txinterface::MmapInterface, winmmap::Mmap};
 
-
+unsafe impl Send for memoryContext {}
+unsafe impl Sync for memoryContext {}
 
 pub struct memoryContext{
     mmap:Arc<RwLock<Mmap>>,
@@ -43,7 +44,7 @@ impl MmapInterface for memoryContext{
         self.fileSize
     }
 
-    fn getMmap(&mut self)->Arc<RwLock<Mmap>> {
+    fn getMmap(&self)->Arc<RwLock<Mmap>> {
         return self.mmap.clone();
     }
 

@@ -1,6 +1,6 @@
 use crate::btree::{scan::comp::OP_CMP, table::record::Record, BTreeError};
 
-use super::{txbiter::TxBIter, txwriter::txwriter};
+use super::{txbiter::TxBIter, txinterface::TxReaderInterface, txwriter::txwriter};
 
 
 pub struct TxScanner<'a>{
@@ -35,7 +35,7 @@ impl<'a> TxScanner<'a> {
            return crate::btree::scan::comp::cmpOK(key, &self.keyEnd, &self.Cmp2);
    }
 
-   pub fn Deref(&self,db:&txwriter, rec: &mut Record)-> Result<(),BTreeError> {
+   pub fn Deref(&self,db:&dyn TxReaderInterface, rec: &mut Record)-> Result<(),BTreeError> {
            let (key,val) = self.iter.Deref();
            if self.indexNo < 0
            {

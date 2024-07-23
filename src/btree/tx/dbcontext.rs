@@ -1,10 +1,11 @@
-use std::{collections::HashMap, sync::{Arc, RwLock}};
+use std::{collections::HashMap, sync::{Arc, Mutex, RwLock}};
 
-use crate::btree::{kv::{node::BNode, nodeinterface::{BNodeFreeListInterface, BNodeReadInterface, BNodeWriteInterface}, ContextError, DB_SIG}, BTREE_PAGE_SIZE};
-use super::{tx::Tx, txinterface::MmapInterface, txreader::TxReader, winmmap::Mmap};
+use crate::btree::{kv::{node::BNode, nodeinterface::{BNodeFreeListInterface, BNodeReadInterface, BNodeWriteInterface}, ContextError, DB_SIG}, table::table::TableDef, BTREE_PAGE_SIZE};
+use super::{memoryContext::memoryContext, tx::Tx, txinterface::MmapInterface, txreader::TxReader, winmmap::Mmap};
 
-pub struct DbContext<'a>{
-    mmapObj:&'a mut dyn MmapInterface,
+pub struct DbContext{
+    //mmapObj:&'a mut dyn MmapInterface,
+    mmapObj:Arc<RwLock<dyn MmapInterface>>,
     //lpBaseAddress: *mut winapi::ctypes::c_void,
     pub root: u64,
     pub nappend: u16, //number of pages to be appended
@@ -15,9 +16,9 @@ pub struct DbContext<'a>{
     nfreelist: u16, //number of pages taken from the free list
 }
 
-impl<'a> DbContext<'a>{
+impl DbContext{
 
-    pub fn new(mmap:&'a mut dyn MmapInterface)->Self
+    pub fn new(mmap:Arc<RwLock<dyn MmapInterface>>)->Self
     {
         DbContext{
             mmapObj:mmap,
@@ -30,13 +31,14 @@ impl<'a> DbContext<'a>{
         }
     }
 
-    pub fn createReader(&mut self,index:usize)->Result<TxReader,ContextError>
+    pub fn createReader(&mut self,index:usize,tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>)->Result<TxReader,ContextError>
     {  
         let reader = TxReader::new(
-            self.mmapObj.getMmap().clone(),
-            self.mmapObj.getContextSize(),
+            self.mmapObj.read().unwrap().getMmap().clone(),
+            self.mmapObj.read().unwrap().getContextSize(),
             self.version,
-            index
+            index,
+            tables
         );
 
         Ok(reader)
@@ -44,9 +46,9 @@ impl<'a> DbContext<'a>{
 
     pub fn createTx(&mut self)->Result<Tx,ContextError>
     {
-        let tx = Tx::new(self.mmapObj.getMmap().clone(),
+        let tx = Tx::new(self.mmapObj.read().unwrap().getMmap().clone(),
             self.root,self.pageflushed,            
-            self.mmapObj.getContextSize() as usize, 
+            self.mmapObj.read().unwrap().getContextSize() as usize, 
             self.freehead,
             self.version, self.version
         );
@@ -61,8 +63,8 @@ impl<'a> DbContext<'a>{
     pub fn masterload(&mut self)->Result<(),ContextError>
     {
         //Init Db file
-        if self.mmapObj.getContextSize() == 0 {
-            if let Err(er) = self.mmapObj.extendContext(2){
+        if self.mmapObj.read().unwrap().getContextSize() == 0 {
+            if let Err(er) = self.mmapObj.write().unwrap().extendContext(2){
                 return Err(ContextError::ExtendNTSectionError);
             };
 
@@ -85,7 +87,7 @@ impl<'a> DbContext<'a>{
                 root.set_header(crate::btree::BNODE_LEAF, 1);
                 root.node_append_kv(0, 0, &[0;1], &[0;1]);
                 unsafe {
-                    let mut mmap = self.mmapObj.getMmap();
+                    let mut mmap = self.mmapObj.read().unwrap().getMmap();
                     let buffer =  mmap.read().unwrap().ptr;
                     for i  in 0..BTREE_PAGE_SIZE
                     {
@@ -100,7 +102,7 @@ impl<'a> DbContext<'a>{
             self.nappend = 0;
 
             self.masterStore();
-            let ret = self.mmapObj.syncContext();
+            let ret = self.mmapObj.write().unwrap().syncContext();
             if let Err(err) = ret
             {
                 return Err(err);
@@ -111,7 +113,7 @@ impl<'a> DbContext<'a>{
 
         //Load Db File
         unsafe {
-            let mut mmap = self.mmapObj.getMmap();
+            let mut mmap = self.mmapObj.read().unwrap().getMmap();
             let buffer =  mmap.read().unwrap().ptr;
             for i in 0..16
             {
@@ -151,7 +153,7 @@ impl<'a> DbContext<'a>{
             }
             let version = u64::from_le_bytes(content[0..8].try_into().unwrap());
 
-            let mut bad: bool = !(1 <= used && used <= (self.mmapObj.getContextSize() as u64)/ BTREE_PAGE_SIZE as u64);
+            let mut bad: bool = !(1 <= used && used <= (self.mmapObj.read().unwrap().getContextSize() as u64)/ BTREE_PAGE_SIZE as u64);
             bad = bad || !(0 <= root && root < used);
             if (bad == true) {
                 return Err(ContextError::LoadDataException);
@@ -190,7 +192,7 @@ impl<'a> DbContext<'a>{
             pos = 40;
             data[pos..pos+8].copy_from_slice(&self.version.to_le_bytes());
 
-            let mut mmap = self.mmapObj.getMmap();
+            let mut mmap = self.mmapObj.read().unwrap().getMmap();
             let buffer =  mmap.write().unwrap().ptr;
             for i in 0..48
             {
@@ -201,7 +203,7 @@ impl<'a> DbContext<'a>{
 
     pub fn writePages(&mut self,updates:&HashMap<u64,Option<BNode>>,totalPages:usize)->Result<(),ContextError>{
 
-        self.mmapObj.extendPages(totalPages);
+        self.mmapObj.write().unwrap().extendPages(totalPages);
 
         for entry in updates
         {
@@ -210,7 +212,7 @@ impl<'a> DbContext<'a>{
                 let ptr:u64 = *entry.0;
                 let offset:usize = ptr as usize * BTREE_PAGE_SIZE;
                 unsafe {
-                    let mut mmap = self.mmapObj.getMmap();
+                    let mut mmap = self.mmapObj.read().unwrap().getMmap();
                     let buffer =  mmap.write().unwrap().ptr;;
                     for i in 0..BTREE_PAGE_SIZE
                     {
@@ -220,7 +222,7 @@ impl<'a> DbContext<'a>{
             }
         }
 
-        let ret = self.mmapObj.syncContext();
+        let ret = self.mmapObj.write().unwrap().syncContext();
         if let Err(err) = ret
         {
             return Err(err);
@@ -236,7 +238,7 @@ impl<'a> DbContext<'a>{
         self.nappend = 0;
 
         self.masterStore();
-        let ret = self.mmapObj.syncContext(); 
+        let ret = self.mmapObj.write().unwrap().syncContext(); 
 
         Ok(())
     }
@@ -254,8 +256,8 @@ mod tests {
     #[test]
     fn test_memorycontext()
     {
-        let mut mctx = memoryContext::new(BTREE_PAGE_SIZE,1000);
-        let mut context = DbContext::new(&mut mctx);
+        let mut mctx = Arc::new(RwLock::new(memoryContext::new(BTREE_PAGE_SIZE,1000)));
+        let mut context = DbContext::new(mctx.clone());
         context.masterload();
 
         let tables = Arc::new(RwLock::new(HashMap::new()));
@@ -266,7 +268,7 @@ mod tests {
         
         let mut dbinstance = txwriter{
             context:tx,
-            tables:tables.clone()
+            tables:tables.clone(),
         };
 
         let mut table = TableDef{

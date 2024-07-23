@@ -1,10 +1,11 @@
-use std::sync::{Arc, RwLock, RwLockReadGuard};
+use std::{collections::HashMap, sync::{Arc, RwLock, RwLockReadGuard}};
 
-use crate::btree::{kv::{node::BNode, nodeinterface::{BNodeReadInterface, BNodeWriteInterface}}, scan::{biter::BIter, comp::OP_CMP}, table::record::Record, BTreeError, BTREE_PAGE_SIZE};
+use crate::btree::{db::TDEF_TABLE, kv::{node::BNode, nodeinterface::{BNodeReadInterface, BNodeWriteInterface}}, scan::{biter::BIter, comp::OP_CMP}, table::{record::Record, table::TableDef, value::Value}, BTreeError, BTREE_PAGE_SIZE};
 use super::{txScanner::TxScanner, txbiter::TxBIter, txinterface::{DBReadInterface, TxReadContext, TxReaderInterface}, winmmap::Mmap};
 
 pub struct TxReader{
     data:Arc<RwLock<Mmap>>,
+    pub tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>,
     root: u64,
     pub version:u64,
     pub index:usize,
@@ -24,13 +25,14 @@ impl DBReadInterface for TxReader{
 }
 
 impl TxReader{
-    pub fn new(data:Arc<RwLock<Mmap>>,len:usize,version:u64,index:usize) -> TxReader{
+    pub fn new(data:Arc<RwLock<Mmap>>,len:usize,version:u64,index:usize,tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>) -> TxReader{
         TxReader{
             data:data,
             len:len,
             root:0,
             version:version,
             index:index,
+            tables:tables,
         }
     }
 
@@ -103,6 +105,52 @@ impl TxReader{
         return iter;
     }
 
+    //get Table Define
+    fn getTableDefFromDB(&self, name: &[u8])->Option<TableDef> {
+
+        let mut rec = Record::new(&TDEF_TABLE);
+        rec.Set("name".as_bytes(), Value::BYTES(name.to_vec()));
+        let ret = self.dbGet(&mut rec);
+        if let Err(er) = ret
+        {
+            return None;
+        }
+
+        if let Ok(r) = ret{
+            if r == true
+            {
+                let r1 = rec.Get("def".as_bytes());
+                if let Some(Value::BYTES(val)) = r1
+                {
+                    let def: TableDef = serde_json::from_str( &String::from_utf8(val.to_vec()).unwrap()) .unwrap();
+                    return Some(def);
+                }
+            }
+        }
+        return None;
+    }
+
+    pub fn getTableDef(&mut self, name: &[u8]) -> Option<TableDef> {
+
+        if let tbs = self.tables.read().unwrap()
+        {
+            if let Some(def) = tbs.get(name)
+            {
+                return Some(def.clone());
+            }
+        }
+
+        let defParsed =  self.getTableDefFromDB(name);
+        if let Some(def) = defParsed
+        {
+            self.tables.write().unwrap().insert(name.to_vec(), def.clone());
+            return Some(def);
+        }
+
+        return None;
+    }
+
+   
     
     // Search a key from the tree
     fn treeSearch<T:BNodeReadInterface>(&self, treenode: &T, key: &[u8]) -> Option<Vec<u8>> {
@@ -137,6 +185,28 @@ impl TxReader{
 }
 
 impl TxReaderInterface for TxReader{
+
+    // get a single row by the primary key
+    fn dbGet(&self,rec:&mut Record)->Result<bool,BTreeError> {
+        let bCheck = rec.checkPrimaryKey();
+        if bCheck == false {
+            return Err(BTreeError::PrimaryKeyIsNotSet);
+        }
+
+        let mut list:Vec<u8> = Vec::new();
+        rec.encodeKey(rec.def.Prefix,&mut list);
+
+        let val = self.Get(&list);
+        match &val {
+            Some(v)=>{
+                rec.decodeValues(&v);
+                return Ok(true);
+            },
+            Other=>{
+                return Ok(false);
+            }
+        }
+    }
 
     fn Get(&self, key:&[u8])  -> Option<Vec<u8>> {
         let rootNode = self.get(self.get_root());

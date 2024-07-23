@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 use crate::btree::kv::node::BNode;
 use crate::btree::kv::nodeinterface::{BNodeFreeListInterface, BNodeReadInterface, BNodeWriteInterface};
 use crate::btree::kv::{ContextError, BTREE_PAGE_SIZE, DB_SIG};
+use crate::btree::table::table::TableDef;
 use crate::btree::BTreeError;
 #[cfg(windows)]extern crate ntapi;
 use ntapi::ntmmapi::{NtExtendSection,NtUnmapViewOfSection,NtMapViewOfSection,NtCreateSection,ViewUnmap,};
@@ -84,13 +85,14 @@ impl WinMmap{
         self.mmap.clone()
     }
 
-    pub fn createReader(&mut self,index:usize)->Result<TxReader,ContextError>
+    pub fn createReader(&mut self,index:usize,tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>)->Result<TxReader,ContextError>
     {  
         let reader = TxReader::new(
             self.mmap.clone(),
             self.fileSize as usize,
             self.version,
-            index
+            index,
+            tables
         );
 
         Ok(reader)

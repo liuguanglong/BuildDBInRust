@@ -5,7 +5,7 @@ use crate::btree::db::{TDEF_META, TDEF_TABLE};
 use crate::btree::kv::node::BNode;
 use crate::btree::kv::{ContextError, BTREE_PAGE_SIZE, DB_SIG};
 use crate::btree::table::table::TableDef;
-use crate::btree::BTreeError;
+use crate::btree::{table, BTreeError};
 
 use super::tx::Tx;
 use super::txdemo::Shared;
@@ -29,92 +29,92 @@ impl Drop for WindowsFileContext {
     }
 }
 
-impl TxContent for WindowsFileContext{
+// impl TxContent for WindowsFileContext{
 
-    fn open(&mut self)->Result<(),crate::btree::kv::ContextError> {
-        self.context.masterload();
-        self.tables.write().unwrap().insert("@meta".as_bytes().to_vec(),TDEF_META.clone());
-        self.tables.write().unwrap().insert("@table".as_bytes().to_vec(),TDEF_TABLE.clone());
-        Ok(())
-    }
+//     fn open(&mut self)->Result<(),crate::btree::kv::ContextError> {
+//         self.context.masterload();
+//         self.tables.write().unwrap().insert("@meta".as_bytes().to_vec(),TDEF_META.clone());
+//         self.tables.write().unwrap().insert("@table".as_bytes().to_vec(),TDEF_TABLE.clone());
+//         Ok(())
+//     }
     
-    fn begin(& mut self)->Result<super::txwriter::txwriter,ContextError> {
+//     fn begin(& mut self)->Result<super::txwriter::txwriter,ContextError> {
         
-        let guard = self.writer.lock().unwrap();
-        let static_guard: MutexGuard<'static, ()> = unsafe { std::mem::transmute(guard) };
-        self.lock = Some(static_guard);
-        let tx =self.context.createTx().unwrap();
-        if self.readers.len() > 0 
-        {
-            self.context.version = self.readers[0];
-        }
+//         let guard = self.writer.lock().unwrap();
+//         let static_guard: MutexGuard<'static, ()> = unsafe { std::mem::transmute(guard) };
+//         self.lock = Some(static_guard);
+//         let tx =self.context.createTx().unwrap();
+//         if self.readers.len() > 0 
+//         {
+//             self.context.version = self.readers[0];
+//         }
     
-        let lock = self.reader.lock();
-        defer! {
-            drop(lock);
-        }
-        let mut txwriter = txwriter{
-            context:tx,
-            tables:self.tables.clone(),
-        };
+//         let lock = self.reader.lock();
+//         defer! {
+//             drop(lock);
+//         }
+//         let mut txwriter = txwriter{
+//             context:tx,
+//             tables:self.tables.clone(),
+//         };
 
-        Ok(txwriter)
-    }
+//         Ok(txwriter)
+//     }
     
-    fn commmit(& mut self, tx:&mut super::txwriter::txwriter)->Result<(),ContextError> {
-        self.context.writePages(&tx.context.freelist.updates);
-        self.context.nappend = tx.context.nappend;
-        self.context.freehead = tx.context.freelist.data.head;
+//     fn commmit(& mut self, tx:&mut super::txwriter::txwriter)->Result<(),ContextError> {
+//         self.context.writePages(&tx.context.freelist.updates);
+//         self.context.nappend = tx.context.nappend;
+//         self.context.freehead = tx.context.freelist.data.head;
 
-        let lock = self.reader.lock();
-        self.context.root = tx.context.root;
-        drop(lock);
+//         let lock = self.reader.lock();
+//         self.context.root = tx.context.root;
+//         drop(lock);
 
-        self.context.SaveMaster();
+//         self.context.SaveMaster();
 
-        defer! {
-            if let Some(l) = &self.lock
-            {
-                drop(l);
-                self.lock = None;
-            }
-        }
-        Ok(())
-    }
+//         defer! {
+//             if let Some(l) = &self.lock
+//             {
+//                 drop(l);
+//                 self.lock = None;
+//             }
+//         }
+//         Ok(())
+//     }
     
-    fn abort(& mut self,tx:& super::txwriter::txwriter) {
-        if let Some(l) = &self.lock
-        {
-            drop(l);
-            self.lock = None;
-        }
-    }
+//     fn abort(& mut self,tx:& super::txwriter::txwriter) {
+//         if let Some(l) = &self.lock
+//         {
+//             drop(l);
+//             self.lock = None;
+//         }
+//     }
     
-    fn beginread(&mut self)->Result<super::txreader::TxReader,ContextError> {
-        let lock = self.reader.lock();
-        defer! {
-            drop(lock);
-        }
+//     fn beginread(&mut self)->Result<super::txreader::TxReader,ContextError> {
+//         let lock = self.reader.lock();
+//         defer! {
+//             drop(lock);
+//         }
 
-        let index = self.readers.len();
-        let reader = self.context.createReader(index);
-        if let Ok(r) = reader
-        {
-            self.readers.push(self.context.version);
-            return Ok(r);        
-        }
-        else {
-            return Err(ContextError::CreateReaderError);
-        }
-    }
+//         let index = self.readers.len();
+//         let reader = self.context.createReader(index,tables);
+//         if let Ok(r) = reader
+//         {
+//             self.readers.push(self.context.version);
+//             return Ok(r);        
+//         }
+//         else {
+//             return Err(ContextError::CreateReaderError);
+//         }
+//     }
     
-    fn endread(&mut self, reader:& super::txreader::TxReader) {
-        let lock = self.reader.lock();
-        self.readers.remove(reader.index);
-        drop(lock);
-    }
+//     fn endread(&mut self, reader:& super::txreader::TxReader) {
+//         let lock = self.reader.lock();
+//         self.readers.remove(reader.index);
+//         drop(lock);
+//     }
 
-}
+// }
 
 impl WindowsFileContext{
 
@@ -135,7 +135,7 @@ impl WindowsFileContext{
             lock : None,
             readers : Vec::new(),
         };
-        context.open();
+        //context.open();
 
         Ok(context)
     }

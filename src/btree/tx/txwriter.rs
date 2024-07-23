@@ -150,6 +150,29 @@ impl DBTxInterface for txwriter{
 }
 
 impl TxReaderInterface for txwriter{
+
+        // get a single row by the primary key
+        fn dbGet(&self,rec:&mut Record)->Result<bool,BTreeError> {
+        let bCheck = rec.checkPrimaryKey();
+        if bCheck == false {
+            return Err(BTreeError::PrimaryKeyIsNotSet);
+        }
+
+        let mut list:Vec<u8> = Vec::new();
+        rec.encodeKey(rec.def.Prefix,&mut list);
+
+        let val = self.Get(&list);
+        match &val {
+            Some(v)=>{
+                rec.decodeValues(&v);
+                return Ok(true);
+            },
+            Other=>{
+                return Ok(false);
+            }
+        }
+    }
+        
     fn Get(&self, key:&[u8])  -> Option<Vec<u8>> {
         let rootNode = self.context.get(self.context.get_root());
         match rootNode{
@@ -308,28 +331,6 @@ impl txwriter{
         }
 
         return None;
-    }
-
-    // get a single row by the primary key
-    pub fn dbGet(&self,rec:&mut Record)->Result<bool,BTreeError> {
-        let bCheck = rec.checkPrimaryKey();
-        if bCheck == false {
-            return Err(BTreeError::PrimaryKeyIsNotSet);
-        }
-
-        let mut list:Vec<u8> = Vec::new();
-        rec.encodeKey(rec.def.Prefix,&mut list);
-
-        let val = self.Get(&list);
-        match &val {
-            Some(v)=>{
-                rec.decodeValues(&v);
-                return Ok(true);
-            },
-            Other=>{
-                return Ok(false);
-            }
-        }
     }
 
     // add a row to the table

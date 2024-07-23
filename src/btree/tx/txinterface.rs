@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Arc, RwLock}};
+use std::{collections::HashMap, sync::{Arc, MutexGuard, RwLock}};
 
 use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::scanner::Scanner, kv::{node::BNode, ContextError}, scan::{biter::BIter, comp::OP_CMP}, table::{record::Record, table::TableDef}, BTreeError};
 use super::{tx::Tx, txScanner::TxScanner, txbiter::TxBIter, txreader::{self, TxReader}, txwriter::txwriter, winmmap::Mmap};
@@ -6,6 +6,8 @@ use super::{tx::Tx, txScanner::TxScanner, txbiter::TxBIter, txreader::{self, TxR
 pub trait TxReaderInterface {
     fn Get(&self, key:&[u8])  -> Option<Vec<u8>>;
     fn Seek(&self, key:&[u8], cmp:OP_CMP) -> TxBIter;
+    fn dbGet(&self,rec:&mut Record)->Result<bool,BTreeError>;
+
 }
 
 pub trait TxInterface {
@@ -45,8 +47,8 @@ pub trait DBTxInterface{
     fn UpdateRecord(&mut self, rec:&mut Record, mode: u16) -> Result<(),BTreeError>;
 }
 
-pub trait MmapInterface{
-    fn getMmap(&mut self)->Arc<RwLock<Mmap>>;
+pub trait MmapInterface: Send + Sync{
+    fn getMmap(&self)->Arc<RwLock<Mmap>>;
     fn getContextSize(&self)->usize;
     fn extendContext(&mut self,pageCount:usize)->Result<(),ContextError>;
     fn extendPages(&mut self,totalpages:usize) -> Result<(),ContextError>;

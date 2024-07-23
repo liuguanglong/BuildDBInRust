@@ -196,7 +196,7 @@ mod tests {
         let random_number: u64 = rng.gen_range(2..30);
         thread::sleep(Duration::from_millis(random_number));
 
-        let mut ct1 = ct.lock().unwrap();
+        let mut ct1: std::sync::MutexGuard<KVContext> = ct.lock().unwrap();
         let reader = ct1.beginread();
         drop(ct1);
         println!("Begin Read Value:{}  Value Index:{}",i,reader.idx); 
