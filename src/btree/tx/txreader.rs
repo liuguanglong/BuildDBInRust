@@ -25,11 +25,11 @@ impl DBReadInterface for TxReader{
 }
 
 impl TxReader{
-    pub fn new(data:Arc<RwLock<Mmap>>,len:usize,version:u64,index:usize,tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>) -> TxReader{
+    pub fn new(data:Arc<RwLock<Mmap>>,root:u64,len:usize,version:u64,index:usize,tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>) -> TxReader{
         TxReader{
             data:data,
             len:len,
-            root:0,
+            root:root,
             version:version,
             index:index,
             tables:tables,

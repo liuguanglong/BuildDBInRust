@@ -13,7 +13,6 @@ pub struct memoryContext{
     dwPageSize:usize,
     maxMemoryPageCount:usize,
     data:Vec<u8>,
-
 }
 
 impl memoryContext{

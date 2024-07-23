@@ -314,19 +314,23 @@ impl txwriter{
     }
 
     pub fn getTableDef(&mut self, name: &[u8]) -> Option<TableDef> {
-
-        if let tbs = self.tables.read().unwrap()
+        if let tbs = self.tables.clone().read().unwrap()
         {
             if let Some(def) = tbs.get(name)
             {
                 return Some(def.clone());
             }
+            drop(tbs);
         }
 
         let defParsed =  self.getTableDefFromDB(name);
         if let Some(def) = defParsed
         {
-            self.tables.write().unwrap().insert(name.to_vec(), def.clone());
+            if let mut tbs = self.tables.clone().write().unwrap()
+            {
+                tbs.insert(name.to_vec(), def.clone());
+                drop(tbs);
+            }
             return Some(def);
         }
 

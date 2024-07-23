@@ -22,9 +22,7 @@ impl Drop for Database {
 }
 
 impl Database{
-
     pub fn new(context:DbContext) -> Result<Self,ContextError> {
-
         let tables = Arc::new(RwLock::new(HashMap::new()));
         let mut context = Database {
             context: context,
@@ -87,9 +85,9 @@ impl TxContent for Database
         self.context.nappend = tx.context.nappend;
         self.context.freehead = tx.context.freelist.data.head;
 
-        let lock = self.reader.lock();
+        //let lock = self.reader.lock();
         self.context.root = tx.context.root;
-        drop(lock);
+        //drop(lock);
 
         self.context.SaveMaster();
 
@@ -133,7 +131,7 @@ mod tests {
     use std::{sync::{Arc, Mutex, RwLock}, thread, time::Duration};
     use rand::Rng;
 
-    use crate::btree::{db::{TDEF_META, TDEF_TABLE}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueType}}, tx::{memoryContext::memoryContext, txdemo::Shared, txinterface::{DBReadInterface, DBTxInterface}, txwriter::txwriter, winmmap::Mmap}, BTREE_PAGE_SIZE, MODE_UPSERT};
+    use crate::btree::{db::{TDEF_META, TDEF_TABLE}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueType}}, tx::{memoryContext::memoryContext, txdemo::Shared, txinterface::{DBReadInterface, DBTxInterface, TxReadContext}, txwriter::txwriter, winmmap::Mmap}, BTREE_PAGE_SIZE, MODE_UPSERT};
     use super::*;
     use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL}};
 
@@ -262,14 +260,15 @@ mod tests {
             handles.push(handle);
         }
 
-        // for i in 0..10 {
-        //     //let reader = context.beginread();
-        //     let instance =  db.clone();
-        //     let handle = thread::spawn(move || {
-        //         read(i, instance)
-        //     });
-        //     handles.push(handle);
-        // }
+        thread::sleep(Duration::from_millis(10));
+        for i in 1..10 {
+            //let reader = context.beginread();
+            let instance =  db.clone();
+            let handle = thread::spawn(move || {
+                read(i, instance)
+            });
+            handles.push(handle);
+        }
 
         for handle in handles {
             handle.join().unwrap();
@@ -280,45 +279,55 @@ mod tests {
     fn write(i:u64,db:Shared<Database>)
     {
         let mut rng = rand::thread_rng();
-        let random_number: u64 = rng.gen_range(2..30);
+        let random_number: u64 = rng.gen_range(2..10);
         thread::sleep(Duration::from_millis(random_number));
 
         let mut dbinstance =  db.lock().unwrap();
         let mut writer = dbinstance.writer.clone();
+        drop(dbinstance);
         let lockWriter = writer.lock().unwrap();
         println!("Begin Set Value:{}-{}",i,i);        
+
+        let mut dbinstance =  db.lock().unwrap();
         let mut tx = dbinstance.begin().unwrap();
         drop(dbinstance);
 
         let ret = tx.getTableDef("person".as_bytes());
          if let Some(tdef) = ret
          {
-             println!("Table define:{}",tdef);
+            //println!("Table define:{}",tdef);
             let mut r = Record::new(&tdef);
 
-            // r.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
-            // r.Set( "name".as_bytes(), Value::BYTES(format!("Bob{}", i).as_bytes().to_vec()));
-            // r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
-            // r.Set("age".as_bytes(), Value::INT16(20));
-            // r.Set("married".as_bytes(), Value::BOOL(false));
+            r.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
+            r.Set( "name".as_bytes(), Value::BYTES(format!("Bob{}", i).as_bytes().to_vec()));
+            r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+            r.Set("age".as_bytes(), Value::INT16(20));
+            r.Set("married".as_bytes(), Value::BOOL(false));
 
-            // tx.UpdateRecord(&mut r,crate::btree::MODE_UPSERT);
+            tx.UpdateRecord(&mut r,crate::btree::MODE_UPSERT);
         }
 
+        println!("root :{}",tx.context.get_root());
         let mut dbinstance =  db.lock().unwrap();
         dbinstance.commmit(&mut tx);
-        drop(lockWriter);
         drop(dbinstance);
+        drop(lockWriter);
         println!("End Set Value:{}-{}",i,i);        
     }
 
 
     fn read(i:u64,db:Shared<Database>)
     {
+        let mut rng = rand::thread_rng();
+        let random_number: u64 = rng.gen_range(5..20);
+        //thread::sleep(Duration::from_millis(random_number));
+        
         let mut dbinstance =  db.lock().unwrap();
         let mut reader = dbinstance.beginread().unwrap();
         drop(dbinstance);
 
+        println!("Begin Read:{}",i);        
+        
         let ret = reader.getTableDef("person".as_bytes());
         if let Some(tdef) = ret
         {
@@ -327,7 +336,7 @@ mod tests {
             key1.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
             key2.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
             //let mut scanner = dbinstance.Seek(1,OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
-            let mut scanner = reader.Scan(OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
+            let mut scanner = reader.Scan(OP_CMP::CMP_GE, OP_CMP::CMP_LE, &key1, &key2);
     
             let mut r3 = Record::new(&tdef);
             match &mut scanner {
@@ -342,6 +351,7 @@ mod tests {
                 
             }    
         }
+        println!("End Read:{}",i);        
 
         let mut dbinstance =  db.lock().unwrap();
         dbinstance.endread(&reader);

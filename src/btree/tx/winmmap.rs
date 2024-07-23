@@ -89,6 +89,7 @@ impl WinMmap{
     {  
         let reader = TxReader::new(
             self.mmap.clone(),
+            0,
             self.fileSize as usize,
             self.version,
             index,

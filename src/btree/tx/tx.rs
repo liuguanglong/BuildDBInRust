@@ -259,7 +259,7 @@ impl Tx{
         let offset = key as usize * BTREE_PAGE_SIZE;
         assert!(offset + BTREE_PAGE_SIZE <= self.len);
         
-        if let Ok(mmap) = self.data.read(){
+        if let Ok(mmap) = self.data.clone().read(){
 
             let mut newNode = BNode::new(BTREE_PAGE_SIZE);
             //println!("index:{}",key);

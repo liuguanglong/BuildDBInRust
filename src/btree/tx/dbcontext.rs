@@ -35,6 +35,7 @@ impl DbContext{
     {  
         let reader = TxReader::new(
             self.mmapObj.read().unwrap().getMmap().clone(),
+            self.root,
             self.mmapObj.read().unwrap().getContextSize(),
             self.version,
             index,
@@ -193,7 +194,7 @@ impl DbContext{
             data[pos..pos+8].copy_from_slice(&self.version.to_le_bytes());
 
             let mut mmap = self.mmapObj.read().unwrap().getMmap();
-            let buffer =  mmap.write().unwrap().ptr;
+            let buffer =  mmap.read().unwrap().ptr;
             for i in 0..48
             {
                 *buffer.add(i + 16) = data[i];
@@ -213,7 +214,7 @@ impl DbContext{
                 let offset:usize = ptr as usize * BTREE_PAGE_SIZE;
                 unsafe {
                     let mut mmap = self.mmapObj.read().unwrap().getMmap();
-                    let buffer =  mmap.write().unwrap().ptr;;
+                    let buffer =  mmap.read().unwrap().ptr;;
                     for i in 0..BTREE_PAGE_SIZE
                     {
                         *buffer.add(i + offset as usize) = v.data()[i];
@@ -238,7 +239,10 @@ impl DbContext{
         self.nappend = 0;
 
         self.masterStore();
-        let ret = self.mmapObj.write().unwrap().syncContext(); 
+
+        let mut writer = self.mmapObj.write().unwrap();
+        let ret = writer.syncContext(); 
+        drop(writer);
 
         Ok(())
     }
