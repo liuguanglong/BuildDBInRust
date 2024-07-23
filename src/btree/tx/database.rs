@@ -282,12 +282,14 @@ mod tests {
         let random_number: u64 = rng.gen_range(2..10);
         thread::sleep(Duration::from_millis(random_number));
 
+        //Try to get write lock,stay until get lock
         let mut dbinstance =  db.lock().unwrap();
         let mut writer = dbinstance.writer.clone();
         drop(dbinstance);
         let lockWriter = writer.lock().unwrap();
-        println!("Begin Set Value:{}-{}",i,i);        
 
+        println!("Begin Set Value:{}-{}",i,i);        
+        //begin tx 
         let mut dbinstance =  db.lock().unwrap();
         let mut tx = dbinstance.begin().unwrap();
         drop(dbinstance);
@@ -308,9 +310,12 @@ mod tests {
         }
 
         println!("root :{}",tx.context.get_root());
+        //commit tx
         let mut dbinstance =  db.lock().unwrap();
         dbinstance.commmit(&mut tx);
         drop(dbinstance);
+
+        //drop writelock
         drop(lockWriter);
         println!("End Set Value:{}-{}",i,i);        
     }
