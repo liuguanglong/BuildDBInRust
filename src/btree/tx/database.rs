@@ -62,18 +62,18 @@ impl TxContent for Database
     }
     
     fn begin(& mut self)->Result<txwriter,ContextError> {
-        
+       
         let tx =self.context.createTx().unwrap();
+        let lock = self.reader.lock();
         if self.readers.len() > 0 
         {
             self.context.version = self.getMinReadVersion();
         }
-        //let lock = self.reader.lock();
+        drop(lock);
         let mut txwriter: txwriter = txwriter{
             context:tx,
             tables:self.tables.clone(),
         };
-        //drop(lock);
         Ok(txwriter)
     }
     
@@ -85,9 +85,9 @@ impl TxContent for Database
         self.context.nappend = tx.context.nappend;
         self.context.freehead = tx.context.freelist.data.head;
 
-        //let lock = self.reader.lock();
+        let lock = self.reader.lock();
         self.context.root = tx.context.root;
-        //drop(lock);
+        drop(lock);
 
         self.context.SaveMaster();
 
