@@ -5,6 +5,7 @@ pub mod table;
 pub mod scan;
 pub mod db;
 pub mod tx;
+pub mod parser;
 
 use std::fmt;
 

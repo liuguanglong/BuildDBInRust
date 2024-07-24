@@ -33,8 +33,6 @@ impl memoryContext{
             fileSize:0,
         }
     }
-
-
 }
 
 impl MmapInterface for memoryContext{
