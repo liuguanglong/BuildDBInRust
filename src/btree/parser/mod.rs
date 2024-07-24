@@ -1,6 +1,7 @@
 use std::{num::ParseFloatError, process::Output};
 
 pub mod lib;
+pub mod Expr;
 
 type ParserResult<'a,Output> = Result<(&'a str,Output),&'a str>;
 
@@ -26,6 +27,18 @@ trait Parser<'a,Output>{
     {
         BoxedParser::new(pred(self,pref_fn))
     }
+
+    fn and_then<F,NextParser,NewOutput>(self,f:F)->BoxedParser<'a,NewOutput>
+    where 
+       Self:Sized + 'a,
+       Output: 'a,
+       NewOutput: 'a,
+       NextParser: Parser<'a,NewOutput> + 'a,
+       F: Fn(Output) -> NextParser + 'a,
+    {
+        BoxedParser::new(and_then(self, f))
+    }
+
 }
 
 fn map<'a,P,F,A,B>(parser:P,map_fn:F)-> impl Parser<'a,B>
@@ -71,7 +84,7 @@ where
     }
 }
 
-fn id(input:&str) -> ParserResult<String>
+fn identifier(input:&str) -> ParserResult<String>
 {
     let mut matched = String::new();
     let mut chars = input.chars();
@@ -134,6 +147,15 @@ fn match_literal<'a>(expected:&'static str)->
 {
     move |input:&'a str| match input.get(0..expected.len()){
         Some(next) if next == expected => Ok((&input[expected.len()..],())),
+        _=>Err(input)
+    } 
+}
+
+fn is_literal<'a>(expected:&'static str)-> 
+    impl Parser<'a,()>
+{
+    move |input:&'a str| match input.get(0..expected.len()){
+        Some(next) if next == expected => Ok((&input[0..],())),
         _=>Err(input)
     } 
 }
@@ -215,6 +237,20 @@ where
     }
 }
 
+fn and_then<'a,P,F,A,B,NextP>(parser:P,f:F)->impl Parser<'a,B>
+where 
+  P: Parser<'a,A>,
+  NextP: Parser<'a,B>,
+  F: Fn(A)->NextP,
+{
+    move |input| match parser.parse(input)
+    {
+        Ok((input_next,result)) => f(result).parse(input_next),
+        Err(err) => Err(err)
+    }
+
+}
+
 fn whitesapce_char<'a>() -> impl Parser<'a,char>
 {
     pred(any_char,|c| c.is_whitespace())
@@ -248,6 +284,7 @@ fn number_string<'a>() -> impl Parser<'a,String>
     )
 }
 
+
 fn number_string_withlead<'a>() -> impl Parser<'a,String>
 {
     map(
@@ -258,31 +295,29 @@ fn number_string_withlead<'a>() -> impl Parser<'a,String>
     )
 }
 
-fn f64<'a>() -> impl Parser<'a,Result<f64,ParseFloatError>>
+fn f64_string<'a>() -> impl Parser<'a,String>
 {
-    map(
-        pair(
-        number_string(),
-        either(
-            map(whitesapce_char(),|c| String::from("")),
-            number_string_withlead())
-        ),
-        |(v1,v2)| convert2f64(v1, v2)
+    number_string().and_then( |v| {
+            either(
+                map(is_literal(" "),|c| String::from("")),
+                number_string_withlead()
+            ).map(
+                move |v1| {
+                    if v1.len() != 0
+                    {
+                       v.clone() + "." + &v1
+                    }
+                    else
+                    {
+                        v.clone()
+                    }
+                }
+            )
+        }
     )
 }
 
-fn convert2f64(str1:String,str2:String)->Result<f64,ParseFloatError>
-{
-    let mut str = str1;
-    if str2.len() != 0
-    {
-        str = str + "." + &str2;
-    }
-    match str.parse::<f64>() {
-        ok@ Ok(_) => ok,
-        err@ Err(_) => err,
-    }
-}
+
 
 #[test]
 fn quoted_number_parse()
@@ -304,15 +339,26 @@ fn quoted_number_parse()
         number_string_withlead().parse(" abcd"));
 
     assert_eq!(
-        Ok(("abc",Ok(234.0))),
-        f64().parse("234 abc") 
+        Ok((" abc","234".to_string())),
+        f64_string().parse("234 abc") 
     );
 
     assert_eq!(
-        Ok(("  abc",Ok(234.345))),
-        f64().parse("234.345  abc") 
+        Ok(("  abc","234.345".to_string())),
+        f64_string().parse("234.345  abc") 
     );
     
+    assert_eq!(
+        Err("abc"),
+        f64_string().parse("234.abc") 
+    );
+
+    assert_eq!(
+        Err(" abc"),
+        f64_string().parse("234. abc") 
+    );
+
+
 }
 
 #[test]
@@ -362,21 +408,21 @@ fn test_match_id()
 {
     assert_eq!(
         Ok(("", "i-am-an-identifier".to_string())),
-        id.parse("i-am-an-identifier")
+        identifier.parse("i-am-an-identifier")
     );
     assert_eq!(
         Ok((" entirely an identifier", "not".to_string())),
-        id.parse("not entirely an identifier")
+        identifier.parse("not entirely an identifier")
     );
     assert_eq!(
         Err("!not at all an identifier"),
-        id.parse("!not at all an identifier")
+        identifier.parse("!not at all an identifier")
     );
 }
 
 #[test]
 fn test_air_combinator() {
-    let tag_opener = pair(match_literal("<"), id);
+    let tag_opener = pair(match_literal("<"), identifier);
     assert_eq!(
         Ok(("/>", ((), "my-first-element".to_string()))),
         tag_opener.parse("<my-first-element/>")
