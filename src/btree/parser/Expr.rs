@@ -13,6 +13,7 @@ pub enum Value{
     BOOL(bool),
     ID(Vec<u8>),
     None,
+    Tuple(Vec<String>),
 }
 
 impl fmt::Display for Value {
@@ -23,7 +24,13 @@ impl fmt::Display for Value {
             Value::BYTES (val) => write!(f,"{}",String::from_utf8(val.to_vec()).unwrap()),
             Value::None => write!(f,"None"),
             Value::ID (val) => write!(f,"{}",String::from_utf8(val.to_vec()).unwrap()),
-
+            Value::Tuple (val) => {
+                for item in val
+                {
+                    write!(f,"{},",item);
+                }
+                write!(f," ")
+            },
         }
     }
 }
@@ -418,26 +425,26 @@ fn Expr<'a>() -> impl Parser<'a,Expr>
     )
 }
 
-fn TupleItems<'a>() -> impl Parser<'a,Vec<Value>>
+fn TupleItems<'a>() -> impl Parser<'a,Value>
 {
     pair(
-        id(),
+        pred(identifier,|v| notKey(v)),
         zero_or_more(right(space0(),
                             right(
                                 match_literal(","),
-                                right(space0(),id())
+                                right(space0(),pred(identifier,|v| notKey(v)))
                             )
                         )
                     )
     ).map( |(first,mut tail)| 
     {
         tail.insert(0, first);
-        tail
+        Value::Tuple(tail)
     }
     )
 }
 
-fn Tuple<'a>() -> impl Parser<'a,Vec<Value>>
+fn Tuple<'a>() -> impl Parser<'a,Value>
 {
     right(
         match_literal("("),
@@ -453,20 +460,12 @@ fn singlequoted_string_parse()
 {
     let exp = "name, age ,address, id, e";
     let ret = TupleItems().parse(exp).unwrap();
-    println!("{} Next:{}",exp,ret.0);
-    for i in ret.1
-    {
-        print!("{i},")
-    }    
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
 
     println!("");
     let exp = "( name, age ,address, id, e )";
     let ret = Tuple().parse(exp).unwrap();
-    println!("{} Next:{}",exp,ret.0);
-    for i in ret.1
-    {
-        print!("{i},")
-    }    
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
 }
 
 #[test]
@@ -514,6 +513,14 @@ fn Expr_()
     let exp = "a > 20 and b < 40 or c < 'sdfsdf'";
     let ret = Expr().parse(exp).unwrap();
     println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);    
+
+    let exp = "20";
+    let ret = Expr().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);   
+
+    let exp = "abc > 'edf'";
+    let ret = Expr().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);   
 
 }
 
