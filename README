@@ -1,4 +1,6 @@
-#Build your own db in rust language
+#
 
-Please read this book [Build Your Own Database From Scratch in Go](https://build-your-own.org/database/) for the details.
+A time-based database for saving and analyzing logs (under development).
+
+
 
