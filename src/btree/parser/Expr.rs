@@ -4,7 +4,7 @@ use winapi::shared::evntrace::EVENT_INSTANCE_HEADER_u2;
 
 use super::*;
 
-const KEYS: [&str; 8] = ["select", "not", "and", "index", "from","filter","or","limit"];
+const KEYS: [&str; 9] = ["select", "not", "and", "index", "from","filter","or","limit","by"];
 
 #[derive(Clone,Debug,PartialEq)]
 pub enum Value{
@@ -36,11 +36,11 @@ impl fmt::Display for Value {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Expr {
-    op: ExpressionType,
-    val: Option<Value>,
-    left: Option<Box<Expr>>,
-    right: Option<Box<Expr>>
+pub struct Expr {
+    pub op: ExpressionType,
+    pub val: Option<Value>,
+    pub left: Option<Box<Expr>>,
+    pub right: Option<Box<Expr>>
 }
 
 impl fmt::Display for Expr {
@@ -221,7 +221,7 @@ fn OpGT<'a>() -> impl Parser<'a,ExpressionType>{
     match_literal(">").map( |c| ExpressionType::GT)
 }
 
-fn number_i64<'a>() -> impl Parser<'a,Value>
+pub fn number_i64<'a>() -> impl Parser<'a,Value>
 {
     map(
         one_or_more(any_char.pred( |c| c.is_numeric())),
@@ -234,7 +234,7 @@ fn number_i64<'a>() -> impl Parser<'a,Value>
     )
 }
 
-fn id<'a>() -> impl Parser<'a,Value>{
+pub fn id<'a>() -> impl Parser<'a,Value>{
     pred(identifier,|v| notKey(v)).map( |v| {
         let mut bytes: Vec<u8> = Vec::new();
 
@@ -371,7 +371,7 @@ fn OpCmpType<'a>() -> impl Parser<'a,ExpressionType>
     )
 }
 
-fn ExprLogicCmp<'a>() -> impl Parser<'a,Expr>
+fn ExprCmp<'a>() -> impl Parser<'a,Expr>
 {
     chain(
         ExprAdd(),
@@ -395,8 +395,8 @@ fn OpEQType<'a>() -> impl Parser<'a,ExpressionType>
 fn ExprEq<'a>() -> impl Parser<'a,Expr>
 {
     chain(
-        ExprLogicCmp(),
-        pair( OpEQType(),right(space0(),ExprLogicCmp())),
+        ExprCmp(),
+        pair( OpEQType(),right(space0(),ExprCmp())),
         newExpr,
         initExpr,
         addExpr
@@ -414,7 +414,7 @@ fn ExprLogicAnd<'a>() -> impl Parser<'a,Expr>
     )
 }
 
-fn Expr<'a>() -> impl Parser<'a,Expr>
+pub fn Expr<'a>() -> impl Parser<'a,Expr>
 {
     chain(
         ExprLogicAnd(),
@@ -491,7 +491,7 @@ fn Expr_()
     println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
 
     let exp = "3 * abc / 20 + 40 > ced";
-    let ret = ExprLogicCmp().parse(exp).unwrap();
+    let ret = ExprCmp().parse(exp).unwrap();
     println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
 
     let exp = "3 * abc / 20 + 40 * ced = 400";

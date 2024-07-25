@@ -2,6 +2,7 @@ use std::{num::ParseFloatError, process::Output};
 
 pub mod lib;
 pub mod Expr;
+pub mod statement;
 
 type ParserResult<'a,Output> = Result<(&'a str,Output),&'a str>;
 
@@ -38,7 +39,6 @@ trait Parser<'a,Output>{
     {
         BoxedParser::new(and_then(self, f))
     }
-
 }
 
 fn map<'a,P,F,A,B>(parser:P,map_fn:F)-> impl Parser<'a,B>
@@ -277,6 +277,7 @@ where
     }
 
 }
+
 
 fn whitesapce_char<'a>() -> impl Parser<'a,char>
 {
