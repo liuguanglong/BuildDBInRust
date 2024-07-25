@@ -200,6 +200,33 @@ where
     }
 }
 
+fn chain<'a,P1,P2,R1,R2,R3,F1,F2,F3>(parser1:P1,parser2:P2,fn1:F1,fn2:F2,fn3:F3) -> impl Parser<'a,R3>
+where 
+  P1: Parser<'a,R1>,
+  P2: Parser<'a,R2>,  
+  F1: Fn()->R3,
+  F2: Fn(&R3,R1)->R3,
+  F3: Fn(&R3,R2)->R3,
+{
+    move |mut input| {
+
+        let mut result = fn1();
+        if let Ok((next_input, first_item)) = parser1.parse(input) {
+            result = fn2(&result,first_item);
+            input = next_input;
+        } else {
+            return Err(input);
+        }
+ 
+        while let Ok((next_input, next_item)) = parser2.parse(input) {
+            input = next_input;
+            result = fn3(&result,next_item)
+        }
+
+        Ok((input, result))
+    }
+}
+
 fn either<'a,P1,P2,A>(parser1:P1,parser2:P2)-> impl Parser<'a,A>
 where 
    P1: Parser<'a,A>,

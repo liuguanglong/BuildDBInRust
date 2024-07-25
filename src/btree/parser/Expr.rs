@@ -1,8 +1,10 @@
+use std::fmt;
+
 use winapi::shared::evntrace::EVENT_INSTANCE_HEADER_u2;
 
 use super::*;
 
-const KEYS: [&str; 6] = ["SELECT", "NOT", "AND", "INDEX", "FROM","FILTER"];
+const KEYS: [&str; 8] = ["select", "not", "and", "index", "from","filter","or","limit"];
 
 #[derive(Clone,Debug,PartialEq)]
 pub enum Value{
@@ -13,12 +15,58 @@ pub enum Value{
     None,
 }
 
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::BOOL(val) => if *val {write!(f, "true")} else {write!(f, "false")},
+            Value::INT64 (val) => write!(f,"{}",*val),
+            Value::BYTES (val) => write!(f,"{}",String::from_utf8(val.to_vec()).unwrap()),
+            Value::None => write!(f,"None"),
+            Value::ID (val) => write!(f,"{}",String::from_utf8(val.to_vec()).unwrap()),
+
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct Expr {
     op: ExpressionType,
     val: Option<Value>,
     left: Option<Box<Expr>>,
     right: Option<Box<Expr>>
+}
+
+impl fmt::Display for Expr {
+
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(l) = &self.left{
+            if l.val.is_some()
+            {
+                write!(f,"{}",l);
+            }
+            else {
+                write!(f,"({})",l);
+            }
+        }
+        if self.op != ExpressionType::None
+        {
+            write!(f,"{}",self.op);
+        }
+        if let Some(r) = &self.right{
+            if r.val.is_some()
+            {
+                write!(f,"{}",r);
+            }
+            else {
+                write!(f,"({})",r);
+            }
+        }
+        if let Some(v) = &self.val{
+            write!(f,"{}",v);
+        }
+        
+        write!(f," ")
+    }
 }
 
 impl Expr{
@@ -71,18 +119,55 @@ enum ExpressionType
     AND,
     OR,
     UnOP,
+    EQ,
+    UnEQ,
     None,
 }
+
+impl fmt::Display for ExpressionType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ExpressionType::Add => write!(f, " + "),
+            ExpressionType::Subtract => write!(f, " - "),
+            ExpressionType::Multiply => write!(f, " * "),
+            ExpressionType::Divide => write!(f, " / "),
+            ExpressionType::Modulo => write!(f, " % "),
+            ExpressionType::Power => write!(f, "^"),
+            ExpressionType::LT => write!(f, " < "),
+            ExpressionType::LE => write!(f, " <= "),
+            ExpressionType::GE => write!(f, " > "),
+            ExpressionType::GT => write!(f, " >= "),
+            ExpressionType::NOT => write!(f, " NOT "),
+            ExpressionType::AND => write!(f, " AND "),
+            ExpressionType::OR => write!(f, " OR "),
+            ExpressionType::UnOP => write!(f, "-"),
+            ExpressionType::None => write!(f, ""),
+            ExpressionType::EQ => write!(f, " = "),
+            ExpressionType::UnEQ => write!(f, " != "),
+
+        }
+    }
+}
+
+fn OpEQ<'a>() -> impl Parser<'a,ExpressionType>{
+    match_literal("=").map( |c| ExpressionType::EQ)
+}
+
+fn OpUnEQ<'a>() -> impl Parser<'a,ExpressionType>{
+    match_literal("!=").map( |c| ExpressionType::UnEQ)
+}
+
+
 fn OpNot<'a>() -> impl Parser<'a,ExpressionType>{
-    match_literal("NOT").map( |c| ExpressionType::NOT)
+    match_literal("not").map( |c| ExpressionType::NOT)
 }
 
 fn OpAnd<'a>() -> impl Parser<'a,ExpressionType>{
-    match_literal("AND").map( |c| ExpressionType::AND)
+    match_literal("and").map( |c| ExpressionType::AND)
 }
 
 fn OpOr<'a>() -> impl Parser<'a,ExpressionType>{
-    match_literal("OR").map( |c| ExpressionType::OR)
+    match_literal("or").map( |c| ExpressionType::OR)
 }
 
 fn OpUnOp<'a>() -> impl Parser<'a,ExpressionType>{
@@ -210,7 +295,7 @@ fn Operand<'a>() -> impl Parser<'a,Expr>
     )
 }
 
-fn OpTerm<'a>() -> impl Parser<'a,ExpressionType>
+fn OpMulType<'a>() -> impl Parser<'a,ExpressionType>
 {
     right(space0(),either(
         OpMultiply(), 
@@ -220,14 +305,216 @@ fn OpTerm<'a>() -> impl Parser<'a,ExpressionType>
         )))
 }
 
-fn Term<'a>() -> impl Parser<'a,Expr>
+fn OpAddType<'a>() -> impl Parser<'a,ExpressionType>
 {
-    pair(Operand(),
-        pair( OpTerm(),right(space0(),Operand()))        
-    ).map(|(v,
-        (op,v1))|
-        Expr::BinaryExpr(op, v, v1)        
+    right(space0(),either(
+        OpAdd(), 
+        OpSubstract(), 
+    ))
+}
+
+
+fn ExprMul<'a>() -> impl Parser<'a,Expr>
+{
+    chain(
+        Operand(),
+        pair( OpMulType(),right(space0(),Operand())),
+        newExpr,
+        initExpr,
+        addExpr
     )
+}
+
+fn newExpr() -> Expr
+{
+    Expr::constExpr(Value::None)
+}
+
+fn initExpr(r:&Expr,v:Expr) -> Expr
+{
+    v
+}
+
+fn addExpr(r:&Expr,v:(ExpressionType,Expr))-> Expr
+{
+    Expr::BinaryExpr(v.0, r.clone(), v.1)
+}
+
+fn ExprAdd<'a>() -> impl Parser<'a,Expr>
+{
+    chain(
+        ExprMul(),
+        pair( OpAddType(),right(space0(),ExprMul())),
+        newExpr,
+        initExpr,
+        addExpr
+    )
+}
+
+fn OpCmpType<'a>() -> impl Parser<'a,ExpressionType>
+{
+    right(space0(),
+        either(
+            OpLE(), 
+            either(
+                OpLT(),
+                either(OpGE(),OpGT())
+            )
+        )
+    )
+}
+
+fn ExprLogicCmp<'a>() -> impl Parser<'a,Expr>
+{
+    chain(
+        ExprAdd(),
+        pair( OpCmpType(),right(space0(),ExprAdd())),
+        newExpr,
+        initExpr,
+        addExpr
+    )
+}
+
+fn OpEQType<'a>() -> impl Parser<'a,ExpressionType>
+{
+    right(space0(),
+        either(
+            OpEQ(), 
+            OpUnEQ()
+        )
+    )
+}
+
+fn ExprEq<'a>() -> impl Parser<'a,Expr>
+{
+    chain(
+        ExprLogicCmp(),
+        pair( OpEQType(),right(space0(),ExprLogicCmp())),
+        newExpr,
+        initExpr,
+        addExpr
+    )
+}
+
+fn ExprLogicAnd<'a>() -> impl Parser<'a,Expr>
+{
+    chain(
+        ExprEq(),
+        pair( right(space0(),OpAnd()),right(space0(),ExprEq())),
+        newExpr,
+        initExpr,
+        addExpr
+    )
+}
+
+fn Expr<'a>() -> impl Parser<'a,Expr>
+{
+    chain(
+        ExprLogicAnd(),
+        pair( right(space0(),OpOr()),right(space0(),ExprLogicAnd())),
+        newExpr,
+        initExpr,
+        addExpr
+    )
+}
+
+fn TupleItems<'a>() -> impl Parser<'a,Vec<Value>>
+{
+    pair(
+        id(),
+        zero_or_more(right(space0(),
+                            right(
+                                match_literal(","),
+                                right(space0(),id())
+                            )
+                        )
+                    )
+    ).map( |(first,mut tail)| 
+    {
+        tail.insert(0, first);
+        tail
+    }
+    )
+}
+
+fn Tuple<'a>() -> impl Parser<'a,Vec<Value>>
+{
+    right(
+        match_literal("("),
+        right(space0(), 
+            left(TupleItems(), right(space0(),match_literal(")"))
+            )
+        )
+    )
+}
+
+#[test]
+fn singlequoted_string_parse()
+{
+    let exp = "name, age ,address, id, e";
+    let ret = TupleItems().parse(exp).unwrap();
+    println!("{} Next:{}",exp,ret.0);
+    for i in ret.1
+    {
+        print!("{i},")
+    }    
+
+    println!("");
+    let exp = "( name, age ,address, id, e )";
+    let ret = Tuple().parse(exp).unwrap();
+    println!("{} Next:{}",exp,ret.0);
+    for i in ret.1
+    {
+        print!("{i},")
+    }    
+}
+
+#[test]
+fn Expr_()
+{
+    let exp = Expr::constExpr(Value::INT64(3));
+    let exp2 = Expr::constExpr(Value::ID("abc".as_bytes().to_vec()));
+    assert_eq!(
+        Ok((" + 40",Expr::BinaryExpr(ExpressionType::Multiply,exp,exp2))),
+        ExprMul().parse("3 * abc + 40")
+    );
+
+    let exp = "3 * abc / 20 + 40";
+    let ret = ExprMul().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+
+    let exp = "3";
+    let ret = ExprMul().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+
+    let exp = "3 * abc / 20 + 40";
+    let ret = ExprAdd().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+
+    let exp = "3 * abc / 20 + 40 > ced";
+    let ret = ExprLogicCmp().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+
+    let exp = "3 * abc / 20 + 40 * ced = 400";
+    let ret = ExprEq().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+
+    let exp = "3 * abc / 20 > 20 and 40 * ced = 400";
+    let ret = ExprLogicAnd().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+
+    let exp = "3 * abc / 20 > 20";
+    let ret = ExprLogicAnd().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+
+    let exp = "3 * abc / 20 > 20";
+    let ret = Expr().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);    
+
+    let exp = "a > 20 and b < 40 or c < 'sdfsdf'";
+    let ret = Expr().parse(exp).unwrap();
+    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);    
+
 }
 
 #[test]
@@ -271,14 +558,21 @@ fn Op_Parser()
     let exp2 = Expr::constExpr(Value::ID("abc".as_bytes().to_vec()));
     assert_eq!(
         Ok((" AND",Expr::BinaryExpr(ExpressionType::Multiply,exp,exp2))),
-        Term().parse("3 * abc AND")
+        ExprMul().parse("3 * abc AND")
     );
 
+    let exp = Expr::constExpr(Value::INT64(3));
+    let exp2 = Expr::constExpr(Value::ID("abc".as_bytes().to_vec()));
+    let exp3 = Expr::constExpr(Value::INT64(20));
+    let exp4 = Expr::constExpr(Value::INT64(4));
+
+    let op1 = Expr::BinaryExpr(ExpressionType::Multiply,exp,exp2);
+    let op2 = Expr::BinaryExpr(ExpressionType::Divide,exp3,exp4);
+    assert_eq!(
+        Ok(("",Expr::BinaryExpr(ExpressionType::Add,op1,op2))),
+        ExprAdd().parse("3 * abc + 20 / 4")
+    );
 
 }
 
 
-#[test]
-fn singlequoted_string_parse()
-{
-}
