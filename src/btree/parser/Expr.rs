@@ -1,10 +1,7 @@
 use std::fmt;
+use super::lib::*;
 
-use winapi::shared::evntrace::EVENT_INSTANCE_HEADER_u2;
-
-use super::*;
-
-const KEYS: [&str; 9] = ["select", "not", "and", "index", "from","filter","or","limit","by"];
+const KEYS: [&str; 10] = ["select", "not", "and", "index", "from","filter","or","limit","by","as"];
 
 #[derive(Clone,Debug,PartialEq)]
 pub enum Value{
@@ -246,6 +243,8 @@ pub fn id<'a>() -> impl Parser<'a,Value>{
         Value::ID(bytes)    
     })
 }
+
+
 
 fn notKey(v:&String) -> bool
 {
