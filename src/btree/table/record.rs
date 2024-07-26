@@ -283,7 +283,7 @@ impl<'a> Record<'a> {
                 //list.extend_from_slice(v);
                 list.push(0);
             },
-            Value::None =>
+            _Other =>
             {
 
             }
@@ -334,6 +334,9 @@ impl<'a> Record<'a> {
                 self.Vals[idx] = Value::BYTES(ret);                        
                 return end + 1;
             },
+            _=>{
+                panic!()
+            }
         }
     }
 }

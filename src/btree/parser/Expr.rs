@@ -1,36 +1,9 @@
 use std::fmt;
+use crate::btree::table::value::Value;
+
 use super::lib::*;
 
-const KEYS: [&str; 10] = ["select", "not", "and", "index", "from","filter","or","limit","by","as"];
-
-#[derive(Clone,Debug,PartialEq)]
-pub enum Value{
-    BYTES(Vec<u8>),
-    INT64(i64),
-    BOOL(bool),
-    ID(Vec<u8>),
-    None,
-    Tuple(Vec<String>),
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Value::BOOL(val) => if *val {write!(f, "true")} else {write!(f, "false")},
-            Value::INT64 (val) => write!(f,"{}",*val),
-            Value::BYTES (val) => write!(f,"{}",String::from_utf8(val.to_vec()).unwrap()),
-            Value::None => write!(f,"None"),
-            Value::ID (val) => write!(f,"{}",String::from_utf8(val.to_vec()).unwrap()),
-            Value::Tuple (val) => {
-                for item in val
-                {
-                    write!(f,"{},",item);
-                }
-                write!(f," ")
-            },
-        }
-    }
-}
+const KEYS: [&str; 13] = ["select", "not", "and", "index", "from","filter","or","limit","by","as","insert","into","values"];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
@@ -278,7 +251,7 @@ fn singlequoted_string<'a>() -> impl Parser<'a,Value>
     })
 }
 
-fn Constant<'a>() -> impl Parser<'a,Value>
+pub fn Constant<'a>() -> impl Parser<'a,Value>
 {
     either(number_i64(), either(id(),singlequoted_string()))
 }
@@ -424,47 +397,47 @@ pub fn Expr<'a>() -> impl Parser<'a,Expr>
     )
 }
 
-fn TupleItems<'a>() -> impl Parser<'a,Value>
-{
-    pair(
-        pred(identifier,|v| notKey(v)),
-        zero_or_more(right(space0(),
-                            right(
-                                match_literal(","),
-                                right(space0(),pred(identifier,|v| notKey(v)))
-                            )
-                        )
-                    )
-    ).map( |(first,mut tail)| 
-    {
-        tail.insert(0, first);
-        Value::Tuple(tail)
-    }
-    )
-}
+// fn TupleItems<'a>() -> impl Parser<'a,Value>
+// {
+//     pair(
+//         pred(identifier,|v| notKey(v)),
+//         zero_or_more(right(space0(),
+//                             right(
+//                                 match_literal(","),
+//                                 right(space0(),pred(identifier,|v| notKey(v)))
+//                             )
+//                         )
+//                     )
+//     ).map( |(first,mut tail)| 
+//     {
+//         tail.insert(0, first);
+//         Value::Tuple(tail)
+//     }
+//     )
+// }
 
-fn Tuple<'a>() -> impl Parser<'a,Value>
-{
-    right(
-        match_literal("("),
-        right(space0(), 
-            left(TupleItems(), right(space0(),match_literal(")"))
-            )
-        )
-    )
-}
+// fn Tuple<'a>() -> impl Parser<'a,Value>
+// {
+//     right(
+//         match_literal("("),
+//         right(space0(), 
+//             left(TupleItems(), right(space0(),match_literal(")"))
+//             )
+//         )
+//     )
+// }
 
 #[test]
 fn singlequoted_string_parse()
 {
-    let exp = "name, age ,address, id, e";
-    let ret = TupleItems().parse(exp).unwrap();
-    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+    // let exp = "name, age ,address, id, e";
+    // let ret = TupleItems().parse(exp).unwrap();
+    // println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
 
-    println!("");
-    let exp = "( name, age ,address, id, e )";
-    let ret = Tuple().parse(exp).unwrap();
-    println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+    // println!("");
+    // let exp = "( name, age ,address, id, e )";
+    // let ret = Tuple().parse(exp).unwrap();
+    // println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
 }
 
 #[test]

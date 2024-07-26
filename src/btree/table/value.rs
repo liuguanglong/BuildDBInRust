@@ -8,6 +8,7 @@ pub enum ValueType {
     INT32,
     INT16,
     INT8,
+    ID,
     BOOL
 }
 
@@ -20,6 +21,7 @@ impl fmt::Display for ValueType {
             ValueType::INT32  => write!(f,"INT32"),
             ValueType::INT64  => write!(f,"INT64"),
             ValueType::BYTES  => write!(f,"BYTES"),
+            ValueType::ID  => write!(f,"ID"),
         }
     }
 }
@@ -32,6 +34,7 @@ pub enum Value{
     INT16(i16),
     INT8(i8),
     BOOL(bool),
+    ID(Vec<u8>),
     None,
 }
 
@@ -100,6 +103,16 @@ impl Value{
                     return false;
                 }
             },
+            Value::ID (_) =>  {
+                if let ValueType::ID = t
+                {
+                    return true;
+                }
+                else {
+                    
+                    return false;
+                }
+            },
             Value::None =>  {
                 return true;
             }
@@ -116,6 +129,7 @@ impl fmt::Display for Value {
             Value::INT32 (val) => write!(f,"{}",*val),
             Value::INT64 (val) => write!(f,"{}",*val),
             Value::BYTES (val) => write!(f,"{}",String::from_utf8(val.to_vec()).unwrap()),
+            Value::ID (val) => write!(f,"{}",String::from_utf8(val.to_vec()).unwrap()),
             Value::None => write!(f,"None"),
         }
     }

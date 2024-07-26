@@ -126,12 +126,59 @@ where
     }
  }
 
+pub fn tuple3<'a,P1,P2,P3,R1,R2,R3>(p1:P1,p2:P2,p3:P3) -> impl Parser<'a,(R1,R2,R3)>
+where 
+    P1 : Parser<'a,R1> + 'a,
+    P2 : Parser<'a,R2> + 'a,
+    P3 : Parser<'a,R3> + 'a
+{
+move |input| {
+    p1.parse(input).and_then(|(next, r1)| {
+        p2.parse(next).and_then(|(next, r2)| {
+            p3.parse(next).map(|(last, r3)| (last, (r1, r2, r3)))
+        })
+    })
+}
+}
+
+pub fn tuple4<'a,P1,P2,P3,P4,R1,R2,R3,R4>(p1:P1,p2:P2,p3:P3,p4:P4) -> impl Parser<'a,(R1,R2,R3,R4)>
+where 
+    P1 : Parser<'a,R1> + 'a,
+    P2 : Parser<'a,R2> + 'a,
+    P3 : Parser<'a,R3> + 'a,
+    P4 : Parser<'a,R4> + 'a
+{
+    move |input| {
+        p1.parse(input).and_then(|(next, r1)| {
+            p2.parse(next).and_then(|(next, r2)| {
+                p3.parse(next).and_then(|(next, r3)| {
+                    p4.parse(next).map(|(last, r4)| (last, (r1, r2, r3,r4)))
+                })
+            })
+        })
+    }
+}
+
 pub fn left<'a,P1,P2,R1,R2>(p1:P1,p2:P2) -> impl Parser<'a,R1>
 where 
 P1 : Parser<'a,R1>,
 P2 : Parser<'a,R2>
 {
     map(pair(p1,p2), |(left,_Right)| left)
+}
+
+pub fn remove_lead_space<'a,P1,R1>(p1:P1) -> impl Parser<'a, R1>
+where
+  P1 : Parser<'a,R1>
+{
+    right(space0(),p1)
+}
+
+pub fn remove_lead_space_and_newline<'a,P1,R1>(p1:P1) -> impl Parser<'a, R1>
+where
+  P1 : Parser<'a,R1>
+{
+    right(zero_or_more(space_char()),p1)
 }
 
 pub fn right<'a,P1,P2,R1,R2>(p1:P1,p2:P2) -> impl Parser<'a,R2>
@@ -227,6 +274,7 @@ where
     }
 }
 
+
 pub fn either<'a,P1,P2,A>(parser1:P1,parser2:P2)-> impl Parser<'a,A>
 where 
    P1: Parser<'a,A>,
@@ -236,6 +284,25 @@ where
         ok @ Ok(_) => ok,
         Err(_) => parser2.parse(input),
     }
+}
+
+pub fn either3<'a,P1,P2,P3,A>(parser1:P1,parser2:P2,parser3:P3)-> impl Parser<'a,A>
+where 
+   P1: Parser<'a,A>,
+   P2: Parser<'a,A>,
+   P3: Parser<'a,A>,
+{
+    either(parser1,either(parser2, parser3))
+}
+
+pub fn either4<'a,P1,P2,P3,P4,A>(parser1:P1,parser2:P2,parser3:P3,parser4:P4)-> impl Parser<'a,A>
+where 
+   P1: Parser<'a,A>,
+   P2: Parser<'a,A>,
+   P3: Parser<'a,A>,
+   P4: Parser<'a,A>,
+{
+    either(parser1,either(parser2,  either(parser3, parser4)))
 }
 
 pub fn any_char(input:&str)->ParserResult<char>
@@ -282,6 +349,13 @@ where
 pub fn whitesapce_char<'a>() -> impl Parser<'a,char>
 {
     pred(any_char,|c| c.is_whitespace())
+}
+
+pub fn space_char<'a>() -> impl Parser<'a,char>
+{
+    pred(any_char,|c| 
+        c.is_whitespace() || *c == '\r' || *c == '\n'
+    )
 }
 
 pub fn space1<'a>() -> impl Parser<'a,Vec<char>>{
