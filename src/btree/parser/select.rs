@@ -1,5 +1,5 @@
 use std::fmt;
-use super::{lib::*, statement::*, expr::{id, Expr}};
+use super::{lib::*, statement::*, expr::{ Expr}};
 
 pub struct SelectExpr{
     Scan:ScanExpr,

@@ -18,6 +18,19 @@ pub struct TableDef{
 
 impl TableDef{
 
+    pub fn create(content:String) -> Self{
+        TableDef{
+            Name:content.as_bytes().to_vec(),
+            Types:Vec::new(),
+            Cols:Vec::new(),
+            Indexes:Vec::new(),
+            PKeys:0,
+            
+            IndexPrefixes:Vec::new(),
+            Prefix:0,
+        }
+    }
+
     pub fn new(content:&String) -> Self{
         let t: TableDef = serde_json::from_str(content).unwrap();
         return t

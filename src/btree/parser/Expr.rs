@@ -3,7 +3,7 @@ use crate::btree::table::value::Value;
 
 use super::lib::*;
 
-const KEYS: [&str; 13] = ["select", "not", "and", "index", "from","filter","or","limit","by","as","insert","into","values"];
+const KEYS: [&str; 17] = ["select", "not", "and", "index", "from","filter","or","limit","by","as","insert","into","values","create","table","primary","key"];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
