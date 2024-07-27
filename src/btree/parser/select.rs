@@ -53,13 +53,12 @@ fn ExprSelectItems<'a>() -> impl Parser<'a,Vec<(Expr,Vec<u8>)>>
     right(
         match_literal("select"),
         pair(
-            right(space0(),ExprSelectItem()),
+            remove_lead_space(ExprSelectItem()),
             zero_or_more(
-                    right(space0(),
-                        right(match_literal(","),
-                           right(space0(),ExprSelectItem())
-                                )
-                            )
+                right(
+                    remove_lead_space(match_literal(",")),
+                    remove_lead_space(ExprSelectItem())
+                    )
                 )
             )
         ).map( |(item1,mut tail)|
@@ -71,7 +70,7 @@ fn ExprSelectItems<'a>() -> impl Parser<'a,Vec<(Expr,Vec<u8>)>>
 }
 
 //stmt select
-fn ExprSelect<'a>() -> impl Parser<'a,SelectExpr> 
+pub fn ExprSelect<'a>() -> impl Parser<'a,SelectExpr> 
 {
     left(
         pair(

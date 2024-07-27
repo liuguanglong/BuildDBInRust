@@ -3,7 +3,7 @@ use crate::btree::table::value::Value;
 use super::{lib::*, statement::*, expr::{id, Expr}};
 
 
-struct UpdateExpr{
+pub struct UpdateExpr{
     Scan:ScanExpr,
     Name:Vec<Vec<u8>>,
     Values:Vec<Expr>,
@@ -66,16 +66,16 @@ fn ExprUpdateItems<'a>() -> impl Parser<'a,Vec<(String,Expr)>>
 }
 
 //update 
-fn ExprUpdate<'a>() -> impl Parser<'a,UpdateExpr> 
+pub fn ExprUpdate<'a>() -> impl Parser<'a,UpdateExpr> 
 {
     right(
-        remove_lead_space(match_literal("update")),
+        remove_lead_space_and_newline(match_literal("update")),
         tuple3(
-            remove_lead_space(id_string()),
-            remove_lead_space(ExprUpdateItems()),
+            remove_lead_space_and_newline(id_string()),
+            remove_lead_space_and_newline(ExprUpdateItems()),
             left(
                ExprScanItems(),
-                remove_lead_space(match_literal(";")))
+               remove_lead_space_and_newline(match_literal(";")))
         )
     ).map(|(table,values,props)|
     {

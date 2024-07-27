@@ -117,7 +117,7 @@ impl TableDef{
 impl fmt::Display for TableDef {
 
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,"\nTable Definition:\n|");
+        write!(f,"\nTable {}:\n|",String::from_utf8(self.Name.to_vec()).unwrap());
         write!(f,"\nTable Prefix{}\n",self.Prefix);
         for i in 0..self.Cols.len()
         {

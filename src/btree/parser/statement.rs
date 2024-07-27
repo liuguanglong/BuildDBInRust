@@ -2,9 +2,34 @@ use std::fmt;
 use crate::btree::table::table::TableDef;
 use crate::btree::table::value::Value;
 
+use super::createtable::ExprCreateTable;
+use super::delete::{DeleteExpr, ExprDelete};
 use super::expr::{id, number_i64};
+use super::insert::{ExprInsert, InsertExpr};
+use super::select::{ExprSelect, SelectExpr};
+use super::update::{ExprUpdate, UpdateExpr};
 use super::{expr::Expr};
 use super::lib::*;
+
+pub enum SQLExpr{
+    Select(SelectExpr),
+    Update(UpdateExpr),
+    Delete(DeleteExpr),
+    Insert(InsertExpr),
+    CreatTable(TableDef),
+}
+
+impl fmt::Display for SQLExpr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SQLExpr::Select(v) => write!(f, "Select:{}",v),
+            SQLExpr::Update(v)  => write!(f,"Update:{}",v),
+            SQLExpr::Delete(v)  => write!(f,"Delete:{}",v),
+            SQLExpr::Insert(v)  => write!(f,"Insert:{}",v),
+            SQLExpr::CreatTable(v)  => write!(f,"Create Table:{}",v),
+        }
+    }
+}
 
 pub struct ScanExpr{
     pub Table:Vec<u8>,
@@ -160,12 +185,110 @@ pub fn ExprFrom<'a>() -> impl Parser<'a,ScanExpr>
     ) 
 }
 
+pub fn ExprSQL<'a>() -> impl Parser<'a,SQLExpr> 
+{
+    either(
+    either4(
+        ExprSelect().map(|v| SQLExpr::Select(v)), 
+        ExprInsert().map(|v| SQLExpr::Insert(v)), 
+        ExprUpdate().map(|v| SQLExpr::Update(v)), 
+        ExprDelete().map(|v| SQLExpr::Delete(v)), 
+    ),
+    ExprCreateTable().map(|v| SQLExpr::CreatTable(v)), 
+    )
+}
 
+pub fn ExprSQLList<'a>() -> impl Parser<'a,Vec<SQLExpr>> 
+{
+    one_or_more(ExprSQL())
+}
 
 #[test]
-fn test_statement_expr() {
+fn test_sql_list() {
+    let expr = r#"
+
+    create table table1123
+    ( 
+        a int8,
+        b int64,
+        c vchar,
+        d bool,
+        e int16,
+        primary key (a,b),
+        index (c,d),
+        index (e,f),
+    );
+
+    select a,b,c,a*c as f, d + 'abc ' as g from tableA index by a >= 20 and a < 80 filter married = 1 offset 1000 ;
+
+    insert into MyTable
+       ( Column1, Column2, Column3 )
+    values
+       ('John', 123, 'Lloyds Office'), 
+       ('Jane', 124, 'Lloyds Office'), 
+       ('Billy', 125, 'London Office'),
+       ('Miranda', 126, 'Bristol Office');
+
+    update tableA set a = 30, b = 'abc' ,d = 26 index by a >= 20 and a < 80;  
+
+    delete from tableA index by a >= 20 and a < 80;
+
+   "#;
+
+    let ret = ExprSQLList().parse(&expr).unwrap();
+    println!("Next:{}",ret.0);
+    for s in ret.1
+    {
+        println!("{}",s);
+    }
 
 }
+
+#[test]
+fn test_sql_expr() {
+    let exprSelect = "select a,b,c,a*c as f, d + 'abc ' as g from tableA index by a >= 20 and a < 80 filter married = 1 offset 1000 ;";
+    let exprInsert = r#"
+    insert into MyTable
+    ( Column1, Column2, Column3 )
+    values
+    ('John', 123, 'Lloyds Office'), 
+    ('Jane', 124, 'Lloyds Office'), 
+    ('Billy', 125, 'London Office'),
+    ('Miranda', 126, 'Bristol Office');
+   "#;
+
+    let exprUpdate = "update tableA set a = 30, b = 'abc' ,d = 26 index by a >= 20 and a < 80;";
+    let exprDelete = "delete from tableA index by a >= 20 and a < 80;";
+    let exprCreateTable =r#"
+    create table table1123
+    ( 
+        a int8,
+        b int64,
+        c vchar,
+        d bool,
+        e int16,
+        primary key (a,b),
+        index (c,d),
+        index (e,f),
+    );
+   "#;
+
+    let ret = ExprSQL().parse(&exprSelect).unwrap();
+    println!("Select  Expr:{}  Next:{}",ret.1,ret.0);
+
+    let ret = ExprSQL().parse(&exprInsert).unwrap();
+    println!("Insert  Expr:{}  Next:{}",ret.1,ret.0);
+
+    let ret = ExprSQL().parse(&exprUpdate).unwrap();
+    println!("Update  Expr:{}  Next:{}",ret.1,ret.0);
+
+    let ret = ExprSQL().parse(&exprDelete).unwrap();
+    println!("Delete  Expr:{}  Next:{}",ret.1,ret.0);
+
+    let ret = ExprSQL().parse(&exprCreateTable).unwrap();
+    println!("Create Table  Expr:{}  Next:{}",ret.1,ret.0);
+}
+
 
 
 #[test]

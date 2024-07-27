@@ -3,7 +3,7 @@ use crate::btree::table::value::Value;
 use super::{lib::*, statement::*, expr::{id, Expr}};
 
 
-struct DeleteExpr{
+pub struct DeleteExpr{
     Scan:ScanExpr,
 }
 
@@ -14,14 +14,14 @@ impl fmt::Display for DeleteExpr {
 }
 
 //stmt delete
-fn ExprDelete<'a>() -> impl Parser<'a,DeleteExpr> 
+pub fn ExprDelete<'a>() -> impl Parser<'a,DeleteExpr> 
 {
     left(
         right(
-            right(space0(),match_literal("delete")),
-            right(space0(),ExprFrom()),
+            remove_lead_space_and_newline(match_literal("delete")),
+            remove_lead_space_and_newline(ExprFrom()),
         ),
-        right(space0(),match_literal(";")
+        remove_lead_space_and_newline(match_literal(";")
             )
         )
         .map(|(expr)|

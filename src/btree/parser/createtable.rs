@@ -103,7 +103,7 @@ fn ExprColumns<'a>() -> impl Parser<'a,(Vec<(String,ValueType)>,Vec<String>,Vec<
 
 }
 
-fn ExprCreateTable<'a>() -> impl Parser<'a,TableDef>
+pub fn ExprCreateTable<'a>() -> impl Parser<'a,TableDef>
 {
     pair(
         ExprTableName(),

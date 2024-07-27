@@ -2,7 +2,7 @@ use std::fmt;
 use crate::btree::{btree::request::InsertReqest, table::value::Value};
 use super::{expr::{id, Constant, Expr}, lib::*, statement::*};
 
-struct InsertExpr{
+pub struct InsertExpr{
     Scan:Vec<u8>,
     Name:Vec<Vec<u8>>,
     Values:Vec<Vec<Value>>,
@@ -115,7 +115,7 @@ fn cols<'a>() -> impl Parser<'a,Vec<String>>
 //   ('Billy', 125, 'London Office'),
 //   ('Miranda', 126, 'Bristol Office');
 
-fn ExprInsert<'a>() -> impl Parser<'a,InsertExpr>
+pub fn ExprInsert<'a>() -> impl Parser<'a,InsertExpr>
 {
     right(
     pair(
