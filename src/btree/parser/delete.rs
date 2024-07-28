@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::btree::table::value::Value;
+use crate::btree::{table::{record::Record, table::TableDef, value::Value}, BTreeError};
 use super::{lib::*, statement::*, expr::{id, Expr}};
 
 
@@ -7,6 +7,15 @@ pub struct DeleteExpr{
     Scan:ScanExpr,
 }
 
+impl DeleteExpr{
+    pub fn createQuest<'a>(&'a self,tdef:&'a TableDef) -> Result<Record,BTreeError>
+    {
+        let mut r: Record = Record::new(&tdef);
+
+        Ok(r)
+    }
+
+}
 impl fmt::Display for DeleteExpr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Expr: =>| {} |",self.Scan)

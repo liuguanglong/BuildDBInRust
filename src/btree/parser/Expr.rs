@@ -80,7 +80,7 @@ impl Expr{
 
 }
 #[derive(Clone,Debug,PartialEq)]
-enum ExpressionType
+pub enum ExpressionType
 {
     Add,
     Subtract,

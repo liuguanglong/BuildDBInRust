@@ -1,6 +1,6 @@
 use std::fmt;
-use crate::btree::{btree::request::InsertReqest, table::value::Value};
-use super::{expr::{id, Constant, Expr}, lib::*, statement::*};
+use crate::btree::{btree::request::InsertReqest, table::{record::Record, table::TableDef, value::Value}, BTreeError};
+use super::{expr::{id, Constant, Expr}, lib::*, sqlerror::SqlError, statement::*};
 
 pub struct InsertExpr{
     Scan:Vec<u8>,
@@ -17,6 +17,26 @@ impl InsertExpr{
             Values:Vec::new(),
         }
     }
+
+    pub fn createQuest<'a>(&'a self,tdef:&'a TableDef) -> Result<Vec<Record>,BTreeError>
+    {
+        let mut list = Vec::with_capacity(self.Values.len());
+        for row in &self.Values
+        {
+            let mut r: Record = Record::new(&tdef);
+            for i in 0..self.Name.len()
+            {
+                if let Err(err) = r.Set(&self.Name[i], row[i].clone())
+                {
+                    return Err(err);
+                }
+            }
+            list.push(r);
+        }
+
+        Ok(list)
+    }
+    
 }
 
 impl fmt::Display for InsertExpr {

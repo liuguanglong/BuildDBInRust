@@ -1,7 +1,7 @@
 use std::fmt;
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize,Clone,Deserialize, Debug)]
+#[derive(Serialize,Clone,Deserialize, Debug,PartialEq)]
 pub enum ValueType {
     BYTES,
     INT64,
@@ -38,13 +38,15 @@ pub enum Value{
     None,
 }
 
+
 impl Value{
+
     pub fn MatchValueType(&self,t:&ValueType) -> bool
     {
         match self {
             Value::BOOL(_) =>
             {
-                if let ValueType::BOOL = t
+                if ValueType::BOOL == *t
                 {
                     return true;
                 }
@@ -54,7 +56,7 @@ impl Value{
                 }
             } ,
             Value::INT8 (_) =>  {
-                if let ValueType::INT8 = t
+                if ValueType::INT8 == *t 
                 {
                     return true;
                 }
@@ -64,7 +66,7 @@ impl Value{
                 }
             } ,
             Value::INT16 (_) => {
-                if let ValueType::INT16 = t
+                if ValueType::INT16 == *t 
                 {
                     return true;
                 }
@@ -74,7 +76,7 @@ impl Value{
                 }
             } ,
             Value::INT32 (_) =>  {
-                if let ValueType::INT32 = t
+                if ValueType::INT32 == *t 
                 {
                     return true;
                 }
@@ -84,7 +86,7 @@ impl Value{
                 }
             } ,
             Value::INT64 (_) =>  {
-                if let ValueType::INT64 = t
+                if ValueType::INT8 == *t || ValueType::INT16 == *t || ValueType::INT32 == *t || ValueType::INT64 == *t 
                 {
                     return true;
                 }
@@ -94,7 +96,7 @@ impl Value{
                 }
             } ,
             Value::BYTES (_) =>  {
-                if let ValueType::BYTES = t
+                if ValueType::BYTES == *t
                 {
                     return true;
                 }
@@ -104,7 +106,7 @@ impl Value{
                 }
             },
             Value::ID (_) =>  {
-                if let ValueType::ID = t
+                if ValueType::ID == *t
                 {
                     return true;
                 }
@@ -134,6 +136,7 @@ impl fmt::Display for Value {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {

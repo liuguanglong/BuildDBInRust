@@ -6,3 +6,6 @@ pub mod delete;
 pub mod update;
 pub mod insert;
 pub mod createtable;
+
+pub mod requesthandler;
+pub mod sqlerror;

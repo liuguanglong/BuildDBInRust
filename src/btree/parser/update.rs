@@ -98,8 +98,7 @@ pub fn ExprUpdate<'a>() -> impl Parser<'a,UpdateExpr>
             }
             if p.0 == "Index"
             {
-                scan.Key1 = p.1.left.clone();
-                scan.Key2 = p.1.right.clone();
+                scan.Index = Some(Box::new(p.1.clone()));
             }
             if p.0 == "Filter"
             {

@@ -1,6 +1,11 @@
+use std::collections::HashMap;
 use std::fmt;
+use crate::btree::parser::expr::ExpressionType;
+use crate::btree::scan::comp::{self, OP_CMP};
+use crate::btree::table::record::Record;
 use crate::btree::table::table::TableDef;
-use crate::btree::table::value::Value;
+use crate::btree::table::value::{Value, ValueType};
+use crate::btree::BTreeError;
 
 use super::createtable::ExprCreateTable;
 use super::delete::{DeleteExpr, ExprDelete};
@@ -35,8 +40,7 @@ pub struct ScanExpr{
     pub Table:Vec<u8>,
 
     // INDEX BY xxx
-    pub Key1: Option<Box<Expr>>,
-    pub Key2: Option<Box<Expr>>,
+    pub Index: Option<Box<Expr>>,
     // FILTER xxx
     pub Filter: Option<Box<Expr>>, // boolean, optional
     // LIMIT x, y
@@ -44,6 +48,157 @@ pub struct ScanExpr{
     pub Limit:usize,
 }
 
+impl ScanExpr{
+    pub fn new(name:Vec<u8>)->Self
+    {
+        ScanExpr{
+            Table:name,
+            Index:None,
+            Filter:None,
+            Offset:0,
+            Limit:100,
+        }
+    }
+
+    fn ExtractConditionItem(n:&Expr)->Option<(ExpressionType,Vec<u8>,Value)>
+    {
+        if n.op == ExpressionType::EQ || n.op == ExpressionType::LE || n.op == ExpressionType::LT
+        || n.op == ExpressionType::GT || n.op == ExpressionType::GE 
+        {
+            if let Some(Value::ID(keyName)) = &n.left.as_ref().unwrap().val
+            {
+                if let Some(val) =  &n.right.as_ref().unwrap().val
+                {
+                    return Some((n.op.clone(),keyName.to_vec(),val.clone()));
+                }
+                else {
+                    return None;
+                }
+            }
+            else {
+                return None;
+            }
+        }
+        else {
+            return None;
+        }
+    }
+
+    fn ExtractCondtion(n:&Expr,conditions:&mut Vec<(ExpressionType,Vec<u8>,Value)>)->Result<(),BTreeError>
+    {
+        if n.op == ExpressionType::EQ || n.op == ExpressionType::LE || n.op == ExpressionType::LT
+        || n.op == ExpressionType::GT || n.op == ExpressionType::GE 
+        {
+            if let Some(item) = Self::ExtractConditionItem(n)
+            {
+                conditions.push(item);
+            }
+        }
+        else if n.op == ExpressionType::AND
+        {
+            if let Some(n) = &n.left
+            {
+                Self::ExtractCondtion(n, conditions);
+            }
+            if let Some(n) = &n.right
+            {
+                Self::ExtractCondtion(n, conditions);
+            }
+        }
+        else {
+            return Err(BTreeError::NoIndexFound);         
+        }
+        Ok(())
+    }
+
+    //only support one column
+    pub fn createScan<'a>(&'a self,tdef:&'a TableDef)->Result<Option<(Record,Record,OP_CMP,OP_CMP)>,BTreeError>
+    {
+        let mut cmp1 = OP_CMP::CMP_GE;
+        let mut cmp2 = OP_CMP::CMP_GE;
+
+        let mut key1 = Record::new(&tdef);
+        let mut key2 = Record::new(&tdef);
+        let mut numOpCmp = 0;
+
+        let mut node = &self.Index;
+
+        let mut conditions:Vec<(ExpressionType,Vec<u8>,Value)> = Vec::new();
+
+        if let Some(n) = node
+        {
+            if let Err(err) = Self::ExtractCondtion(n,&mut conditions)
+            {
+                return Err(err);
+            }
+        }
+
+        let mut CompareColumn:Option<Vec<u8>> = None;
+        let mut Compare1:Option<(ExpressionType,Value)> = None;
+        let mut Compare2:Option<(ExpressionType,Value)> = None;
+        for item in conditions
+        {
+            if item.0 == ExpressionType::EQ
+            {
+                key1.Set(&item.1, item.2.clone());
+                key2.Set(&item.1, item.2.clone());
+            }
+
+            if CompareColumn.is_none()
+            {
+                CompareColumn = Some(item.1);
+            }
+            else{
+                if let Some(v) = &CompareColumn
+                {
+                    if( *v != item.1)
+                    {
+                        return Err(BTreeError::BadSearchCondition);
+                    }
+                }
+            }
+
+            if Compare1.is_none()
+            {
+                Compare1 = Some((item.0,item.2));
+            }
+            else if Compare2.is_none()
+            {
+                Compare2 = Some((item.0,item.2));
+            }
+            else {
+                return Err(BTreeError::BadSearchCondition);
+            }
+        }
+
+        if let Some(col) = &CompareColumn
+        {
+            if let Some(c) = &Compare1
+            {
+                key1.Set(col, c.1.clone());
+                cmp1 = ExprType2OP_CMP(&c.0);
+            }
+            if let Some(c) = &Compare1
+            {
+                key2.Set(col, c.1.clone());
+                cmp1 = ExprType2OP_CMP(&c.0);
+            }
+        }
+
+        Ok(Some((key1,key2,cmp1,cmp2)))
+    }
+}
+
+fn ExprType2OP_CMP(op:&ExpressionType)->OP_CMP
+{
+    match op {
+        ExpressionType::LT => OP_CMP::CMP_LT,
+        ExpressionType::LE => OP_CMP::CMP_LE,
+        ExpressionType::GE => OP_CMP::CMP_GE,
+        ExpressionType::GT => OP_CMP::CMP_GT,
+        _Other => panic!("Bad Index"),
+    }
+}
 
 struct TableExpr{
     def:TableDef
@@ -52,13 +207,9 @@ struct TableExpr{
 impl fmt::Display for ScanExpr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Table:{} |",String::from_utf8(self.Table.to_vec()).unwrap());
-        if let Some(key1) = &self.Key1
+        if let Some(Index) = &self.Index
         {
-            write!(f, "Key1:{} |",key1);
-        }
-        if let Some(key2) = &self.Key2
-        {
-            write!(f, "Key2:{} |",key2);
+            write!(f, "Index:{} |",Index);
         }
 
         if let Some(filter) = &self.Filter
@@ -71,19 +222,6 @@ impl fmt::Display for ScanExpr {
     }
 }
 
-impl ScanExpr{
-    pub fn new(name:Vec<u8>)->Self
-    {
-        ScanExpr{
-            Table:name,
-            Key1:None,
-            Key2:None,
-            Filter:None,
-            Offset:0,
-            Limit:100,
-        }
-    }
-}
 
 fn ExprIndex<'a>() -> impl Parser<'a,Expr>
 {
@@ -168,8 +306,7 @@ pub fn ExprFrom<'a>() -> impl Parser<'a,ScanExpr>
                     }
                     if p.0 == "Index"
                     {
-                        scan.Key1 = p.1.left.clone();
-                        scan.Key2 = p.1.right.clone();
+                        scan.Index = Some(Box::new(p.1.clone()));
                     }
                     if p.0 == "Filter"
                     {
@@ -202,6 +339,51 @@ pub fn ExprSQLList<'a>() -> impl Parser<'a,Vec<SQLExpr>>
 {
     one_or_more(ExprSQL())
 }
+
+#[test]
+fn test_createScan(){
+    let expr = "from tableA index by age >= 20 and age < 80";
+    let expr1 = "from tableA index by age == 35 ";
+    let expr2 = "from tableA index by age > 25";
+    
+    let mut table = TableDef{
+        Prefix:0,
+        Name: "tableA".as_bytes().to_vec(),
+        Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT8, ValueType::BOOL ] ,
+        Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
+        PKeys : 0,
+        Indexes : vec![vec!["address".as_bytes().to_vec() , "married".as_bytes().to_vec()],vec!["age".as_bytes().to_vec()]],
+        IndexPrefixes : vec![],
+    };
+
+
+    let scan = ExprFrom().parse(expr);
+    if let Ok(scan) = scan{
+        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        {
+            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}|",key1,key2,cmp1,cmp2);
+        }
+    }
+
+    let scan = ExprFrom().parse(expr1);
+    if let Ok(scan) = scan{
+        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        {
+            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}|",key1,key2,cmp1,cmp2);
+        }
+    }
+
+
+    let scan = ExprFrom().parse(expr2);
+    if let Ok(scan) = scan{
+        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        {
+            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}|",key1,key2,cmp1,cmp2);
+        }
+    }
+
+}
+
 
 #[test]
 fn test_sql_list() {

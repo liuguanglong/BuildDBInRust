@@ -1,3 +1,5 @@
+use std::fmt;
+
 
 
 #[derive(Clone,Debug,Copy)]
@@ -18,6 +20,19 @@ impl OP_CMP {
         }
     }
 }
+
+
+impl fmt::Display for OP_CMP {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OP_CMP::CMP_GE => write!(f, "CMP_GE"),
+            OP_CMP::CMP_GT => write!(f, "CMP_GT"),
+            OP_CMP::CMP_LT => write!(f, "CMP_LT"),
+            OP_CMP::CMP_LE => write!(f, "CMP_LE"),
+        }
+    }
+}
+
 
 pub fn cmpOK(key:&[u8], val: &[u8], cmp:&OP_CMP) -> bool {
     let ret = crate::btree::util::compare_arrays(key, val);

@@ -41,6 +41,25 @@ impl<'a> Record<'a> {
         }
     }
 
+    fn ConvertI64(v:i64,t:&ValueType)->Result<Value,BTreeError>
+    {
+        match t {
+            ValueType::INT8 => match i8::try_from(v) {
+                                    Ok(num) => Ok(Value::INT8(num)),
+                                    Err(_) =>  Err(BTreeError::ValueTypeWrong("".to_string())),
+                                },
+            ValueType::INT16 => match i16::try_from(v) {
+                                    Ok(num) => Ok(Value::INT16(num)),
+                                    Err(_) =>  Err(BTreeError::ValueTypeWrong("".to_string())),
+                                },
+            ValueType::INT32 => match i32::try_from(v) {
+                                        Ok(num) => Ok(Value::INT32(num)),
+                                        Err(_) =>  Err(BTreeError::ValueTypeWrong("".to_string())),
+                                    },
+            _Other=>  Err(BTreeError::ValueTypeWrong("".to_string())) ,
+        }
+    }
+
     pub fn Set(&mut self, key: &[u8], val: Value) -> Result<(),BTreeError>{
         let idx = self.GetColumnIndex(key);
         match idx 
@@ -48,7 +67,22 @@ impl<'a> Record<'a> {
             Some(i) => {
                 if val.MatchValueType(&self.def.Types[i]) == true
                 {
-                    self.Vals[i] = val;
+                    if let Value::INT64(v) = val 
+                    {
+                        if self.def.Types[i] == ValueType::INT8 || self.def.Types[i] == ValueType::INT16 || self.def.Types[i] == ValueType::INT32
+                        {
+                            if let Ok(v) = Self::ConvertI64(v,&self.def.Types[i])
+                            {
+                                self.Vals[i] = v;
+                            }
+                            else {
+                                return Err(BTreeError::ValueTypeWrong(std::str::from_utf8(key).unwrap().to_string()));
+                            }
+                        }
+                    }
+                    else {
+                        self.Vals[i] = val;
+                    }
                     Ok(())
                 }
                 else {
