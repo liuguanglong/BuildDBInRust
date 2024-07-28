@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::f64::consts::E;
 use std::fmt;
 use crate::btree::parser::expr::ExpressionType;
 use crate::btree::scan::comp::{self, OP_CMP};
@@ -112,7 +113,7 @@ impl ScanExpr{
     }
 
     //only support one column
-    pub fn createScan<'a>(&'a self,tdef:&'a TableDef)->Result<Option<(Record,Record,OP_CMP,OP_CMP)>,BTreeError>
+    pub fn createScan<'a>(&'a self,tdef:&'a TableDef)->Result<Option<(Record,Option<Record>,OP_CMP,Option<OP_CMP>)>,BTreeError>
     {
         let mut cmp1 = OP_CMP::CMP_GE;
         let mut cmp2 = OP_CMP::CMP_GE;
@@ -142,6 +143,7 @@ impl ScanExpr{
             {
                 key1.Set(&item.1, item.2.clone());
                 key2.Set(&item.1, item.2.clone());
+                continue;
             }
 
             if CompareColumn.is_none()
@@ -178,14 +180,28 @@ impl ScanExpr{
                 key1.Set(col, c.1.clone());
                 cmp1 = ExprType2OP_CMP(&c.0);
             }
-            if let Some(c) = &Compare1
+            if let Some(c) = &Compare2
             {
                 key2.Set(col, c.1.clone());
-                cmp1 = ExprType2OP_CMP(&c.0);
+                cmp2 = ExprType2OP_CMP(&c.0);
             }
         }
+        else {
+            cmp1 = OP_CMP::CMP_GE;
+            cmp2 = OP_CMP::CMP_LE;
 
-        Ok(Some((key1,key2,cmp1,cmp2)))
+            return Ok(Some((key1,Some(key2),cmp1,Some(cmp2))));
+        }
+
+        if Compare2.is_some()
+        {
+            Ok(Some((key1,Some(key2),cmp1,Some(cmp2))))
+        }
+        else
+        {
+            Ok(Some((key1,None,cmp1,None)))
+        }
+
     }
 }
 
@@ -343,8 +359,11 @@ pub fn ExprSQLList<'a>() -> impl Parser<'a,Vec<SQLExpr>>
 #[test]
 fn test_createScan(){
     let expr = "from tableA index by age >= 20 and age < 80";
-    let expr1 = "from tableA index by age == 35 ";
+    let expr1 = "from tableA index by age = 35 ";
     let expr2 = "from tableA index by age > 25";
+    let expr3 = "from tableA index by address = 'China' and age >= 20 and age < 80";
+    let expr4 = "from tableA index by address = 'China' and name = 'Bob' and age > 30 and age < 90";
+    let expr5 = "from tableA index by address = 'China' and name = 'Bob' and age = 30 ";
     
     let mut table = TableDef{
         Prefix:0,
@@ -361,7 +380,7 @@ fn test_createScan(){
     if let Ok(scan) = scan{
         if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
         {
-            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}|",key1,key2,cmp1,cmp2);
+            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.unwrap(),cmp1,cmp2.unwrap());
         }
     }
 
@@ -369,7 +388,7 @@ fn test_createScan(){
     if let Ok(scan) = scan{
         if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
         {
-            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}|",key1,key2,cmp1,cmp2);
+            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.unwrap(),cmp1,cmp2.unwrap());
         }
     }
 
@@ -378,10 +397,33 @@ fn test_createScan(){
     if let Ok(scan) = scan{
         if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
         {
-            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}|",key1,key2,cmp1,cmp2);
+            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.is_none(),cmp1,cmp2.is_none());
         }
     }
 
+    let scan = ExprFrom().parse(expr3);
+    if let Ok(scan) = scan{
+        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        {
+            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.unwrap(),cmp1,cmp2.unwrap());
+        }
+    }
+
+    let scan = ExprFrom().parse(expr4);
+    if let Ok(scan) = scan{
+        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        {
+            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.unwrap(),cmp1,cmp2.unwrap());
+        }
+    }
+
+    let scan = ExprFrom().parse(expr5);
+    if let Ok(scan) = scan{
+        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        {
+            println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.unwrap(),cmp1,cmp2.unwrap());
+        }
+    }
 }
 
 
