@@ -13,7 +13,7 @@ pub struct TxReader{
 }
 
 impl DBReadInterface for TxReader{
-    fn Scan(&self, cmp1: OP_CMP, cmp2: OP_CMP, key1:&crate::btree::table::record::Record, key2:&crate::btree::table::record::Record)->Result<super::txScanner::TxScanner,crate::btree::BTreeError> {
+    fn Scan(&self, cmp1: OP_CMP, cmp2: Option<OP_CMP>, key1:&Record, key2:Option<&Record>)->Result<TxScanner,BTreeError> {
         if let Ok(indexNo) = key1.findIndexes()
         {
             return self.SeekRecord(indexNo, cmp1, cmp2, key1, key2);
@@ -36,15 +36,18 @@ impl TxReader{
         }
     }
 
-    fn SeekRecord(&self,idxNumber:i16, cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<TxScanner,BTreeError> {
+    fn SeekRecord(&self,idxNumber:i16, cmp1: OP_CMP, cmp2: Option<OP_CMP>, key1:&Record, key2:Option<&Record>)->Result<TxScanner,BTreeError> {
         
         // sanity checks
-        if cmp1.value() > 0 && cmp2.value() < 0 
-        {} 
-        else if cmp2.value() > 0 && cmp1.value() < 0 
-        {} 
-        else {
-            return Err(BTreeError::BadArrange);
+        if cmp2.is_some()
+        {
+            if cmp1.value() > 0 && cmp2.unwrap().value() < 0 
+            {} 
+            else if cmp2.unwrap().value() > 0 && cmp1.value() < 0 
+            {} 
+            else {
+                return Err(BTreeError::BadArrange);
+            }
         }
 
         let mut keyStart: Vec<u8> = Vec::new();
@@ -56,17 +59,27 @@ impl TxReader{
             if  bCheck1 == false {
                 return Err(BTreeError::KeyError);
             }
-            let bCheck2 = key2.checkPrimaryKey();
-            if  bCheck2 == false {
-                return Err(BTreeError::KeyError);
+
+            if key2.is_some()
+            {
+                let bCheck2 = key2.unwrap().checkPrimaryKey();
+                if  bCheck2 == false {
+                    return Err(BTreeError::KeyError);
+                }
             }
     
             key1.encodeKey(key1.def.Prefix, &mut keyStart);
-            key2.encodeKey(key2.def.Prefix, &mut keyEnd);
+            if key2.is_some()
+            {
+                key2.unwrap().encodeKey(key2.unwrap().def.Prefix, &mut keyEnd);
+            }
         }
         else {
             key1.encodeKeyPartial(idxNumber as usize,&mut keyStart,);
-            key2.encodeKeyPartial(idxNumber as usize,&mut keyEnd);
+            if key2.is_some()
+            {
+                key2.unwrap().encodeKeyPartial(idxNumber as usize,&mut keyEnd);
+            }
             println!("KeyStart:{:?}  KeyEnd:{:?}",keyStart,keyEnd);
         }
 
@@ -76,7 +89,13 @@ impl TxReader{
             return Err(BTreeError::NextNotFound);
         }
         Ok(
-            TxScanner::new(idxNumber,cmp1,cmp2,keyStart,keyEnd,iter)
+            if key2.is_some()
+            {
+                TxScanner::new(idxNumber,cmp1,cmp2,keyStart,Some(keyEnd),iter)
+            }
+            else {
+                TxScanner::new(idxNumber,cmp1,cmp2,keyStart,None,iter)
+            }
         )
 
     }

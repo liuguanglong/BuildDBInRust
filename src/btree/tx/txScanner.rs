@@ -6,16 +6,16 @@ use super::{txbiter::TxBIter, txinterface::TxReaderInterface, txwriter::txwriter
 pub struct TxScanner<'a>{
     // the range, from Key1 to Key2
     Cmp1: OP_CMP,
-    Cmp2: OP_CMP,
+    Cmp2: Option<OP_CMP>,
     iter: TxBIter<'a>,
     indexNo : i16,
-    keyEnd: Vec<u8>,
+    keyEnd: Option<Vec<u8>>,
     keyStart: Vec<u8>,
 }
 
 impl<'a> TxScanner<'a> {
    
-   pub fn new(indexNo:i16,cmp1: OP_CMP, cmp2: OP_CMP,keyStart:Vec<u8>,keyEnd:Vec<u8>,iter:TxBIter<'a>) -> Self{
+   pub fn new(indexNo:i16,cmp1: OP_CMP, cmp2: Option<OP_CMP>,keyStart:Vec<u8>,keyEnd:Option<Vec<u8>>,iter:TxBIter<'a>) -> Self{
     TxScanner{
            indexNo:indexNo,
            Cmp1:cmp1,
@@ -27,12 +27,21 @@ impl<'a> TxScanner<'a> {
    }
 
    pub fn Valid(&self)-> bool {
-           if self.iter.Valid() == false
+           if self.iter.Valid() == true
            {
+                if self.Cmp2.is_some()
+                {
+                let (key,_) = self.iter.Deref();
+                return crate::btree::scan::comp::cmpOK(key, &self.keyEnd.as_ref().unwrap(), &self.Cmp2.unwrap());
+                }
+                else {
+                    return true;
+                }
+            }
+           else {
                return false;
            }
-           let (key,_) = self.iter.Deref();
-           return crate::btree::scan::comp::cmpOK(key, &self.keyEnd, &self.Cmp2);
+
    }
 
    pub fn Deref(&self,db:&dyn TxReaderInterface, rec: &mut Record)-> Result<(),BTreeError> {

@@ -37,11 +37,11 @@ pub trait TxContent{
 }
 
 pub trait DBReadInterface{
-    fn Scan(&self, cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<TxScanner,BTreeError>;
+    fn Scan(&self, cmp1: OP_CMP, cmp2: Option<OP_CMP>, key1:&Record, key2:Option<&Record>)->Result<TxScanner,BTreeError>;
 }
 
 pub trait DBTxInterface{
-    fn Scan(&self, cmp1: OP_CMP, cmp2: OP_CMP, key1:&Record, key2:&Record)->Result<TxScanner,BTreeError>;
+    fn Scan(&self, cmp1: OP_CMP, cmp2: Option<OP_CMP>, key1:&Record, key2:Option<&Record>)->Result<TxScanner,BTreeError>;
     fn DeleteRecord(&mut self, rec:&Record)->Result<bool,BTreeError>;
     fn AddTable(&mut self, tdef:&mut TableDef)-> Result<(),BTreeError>;
     fn UpdateRecord(&mut self, rec:&mut Record, mode: u16) -> Result<(),BTreeError>;

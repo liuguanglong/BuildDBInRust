@@ -324,7 +324,7 @@ mod tests {
             key1.Set("name".as_bytes(), Value::BYTES("Bob1".as_bytes().to_vec()));
             key2.Set("name".as_bytes(), Value::BYTES("Bob5".as_bytes().to_vec()));
             //let mut scanner = dbinstance.Seek(1,OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
-            let mut scanner = dbinstance.Scan(OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
+            let mut scanner = dbinstance.Scan(OP_CMP::CMP_GT, Some(OP_CMP::CMP_LE), &key1, Some(&key2));
     
             let mut r3 = Record::new(&tdef);
             match &mut scanner {
