@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::btree::table::value::Value;
+use crate::btree::{table::{record::Record, value::{Value, ValueError}}, BTreeError};
 
 use super::lib::*;
 
@@ -76,6 +76,113 @@ impl Expr{
             right:Some(Box::new(right)),
             val :None,
         }
+    }
+
+    pub fn eval(&self,rc:&Record)->Result<Value,BTreeError>
+    {
+        Self::evalNode(self,rc)
+    }
+
+    fn evalNode(node:&Expr,rc:&Record)->Result<Value,BTreeError>
+    {
+        if node.val.is_some(){
+            return Ok(node.val.as_ref().unwrap().clone());
+        }
+
+        let mut left = Value::None;
+        let leftNode = node.left.as_ref().unwrap();
+        if leftNode.val.is_some()
+        {
+            left = leftNode.val.as_ref().unwrap().clone();
+        }
+        else 
+        {
+            if let Ok(v) = Self::evalNode(&leftNode,rc)
+            {
+                left = v;
+            }
+            else {
+                return Err(BTreeError::EvalException);
+            }
+        }
+
+        if node.right.as_ref().is_none()
+        {
+            return Self::EvalUnaryExpr(&node.op,&left);
+        }
+
+        let mut right = Value::None;
+        let rightNode = node.right.as_ref().unwrap();
+        if rightNode.val.is_some()
+        {
+            right = rightNode.val.as_ref().unwrap().clone();
+        }
+        else 
+        {
+            if let Ok(v) = Self::evalNode(rightNode,rc)
+            {
+                right = v;
+            }
+            else {
+                return Err(BTreeError::EvalException);
+            }
+        }
+
+        if let Ok(v) = Self::EvalBinaryExpr(&node.op,&left,&right)
+        {
+            return Ok(v);
+        }
+        else {
+            return Err(BTreeError::EvalException);
+            
+        }
+        
+    }
+
+    fn EvalBinaryExpr(op:&ExpressionType,left:&Value,right:&Value)->Result<Value,ValueError>
+    {
+        match op {
+            ExpressionType::Add => return left.Add(right.clone()),
+            ExpressionType::Subtract => return left.Subtract(right.clone()),
+            ExpressionType::Multiply => return left.Multiply(right.clone()),
+            ExpressionType::Divide => return left.Divide(right.clone()),
+            ExpressionType::Modulo => return left.Modulo(right.clone()),
+            ExpressionType::LT => return left.Compare(right.clone(), |x,y| x < y),
+            ExpressionType::LE => return left.Compare(right.clone(), |x,y| x <= y),
+            ExpressionType::GE => return left.Compare(right.clone(), |x,y| x >= y),
+            ExpressionType::GT => return left.Compare(right.clone(), |x,y| x > y),
+            ExpressionType::AND => return left.LogicOp(right.clone(), |x,y| x && y),
+            ExpressionType::OR => return left.LogicOp(right.clone(), |x,y| x || y),
+            ExpressionType::EQ =>return left.LogicOp(right.clone(), |x,y| x == y),
+            ExpressionType::UnEQ => return left.LogicOp(right.clone(), |x,y| x != y),
+            _Other => return Err( ValueError::OperationNotSupported(String::from("")) ),
+        };
+
+        Err( ValueError::OperationNotSupported(String::from("")) )
+    }
+
+    fn EvalUnaryExpr(op:&ExpressionType,v:&Value)->Result<Value,BTreeError>
+    {
+        if *op == ExpressionType::UnOP
+        {
+            match  v {
+                Value::INT64(v) => Ok(Value::INT64(-v)),
+                Value::INT32(v) => Ok(Value::INT32(-v)),
+                Value::INT16(v) => Ok(Value::INT16(-v)),
+                Value::INT8(v) => Ok(Value::INT8(-v)),
+                _Other => Err(BTreeError::EvalException),
+            };
+        }
+
+        if *op == ExpressionType::NOT
+        {
+            match  v {
+                Value::BOOL(v) =>  Ok(Value::BOOL(!v)),
+                _Other => Err(BTreeError::EvalException),
+            };
+        }
+
+        Err(BTreeError::EvalException)
     }
 
 }

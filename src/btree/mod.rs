@@ -41,6 +41,7 @@ pub enum BTreeError{
     RecordNotFound,
     IndexNotFoundError,
     BadSearchCondition,
+    EvalException,
 
 }
 
@@ -63,6 +64,7 @@ impl fmt::Display for BTreeError {
             BTreeError::RecordNotFound => write!(f,"Record is found!"),
             BTreeError::IndexNotFoundError => write!(f,"Index is not found!"),
             BTreeError::BadSearchCondition => write!(f,"Bad Search Condition!"),
+            BTreeError::EvalException => write!(f,"Exception occured when trying to eval expr!"),
         }
     }
 }
