@@ -4,7 +4,7 @@ use super::{lib::*, statement::*, expr::{id, Expr}};
 
 
 pub struct DeleteExpr{
-    Scan:ScanExpr,
+    pub Scan:ScanExpr,
 }
 
 impl DeleteExpr{

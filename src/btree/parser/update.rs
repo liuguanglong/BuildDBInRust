@@ -4,9 +4,9 @@ use super::{lib::*, statement::*, expr::{id, Expr}};
 
 
 pub struct UpdateExpr{
-    Scan:ScanExpr,
-    Name:Vec<Vec<u8>>,
-    Values:Vec<Expr>,
+    pub Scan:ScanExpr,
+    pub Name:Vec<Vec<u8>>,
+    pub Values:Vec<Expr>,
 }
 
 impl UpdateExpr{

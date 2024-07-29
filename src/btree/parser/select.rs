@@ -2,9 +2,9 @@ use std::fmt;
 use super::{lib::*, statement::*, expr::{ Expr}};
 
 pub struct SelectExpr{
-    Scan:ScanExpr,
-    Name:Vec<Vec<u8>>,
-    Ouput:Vec<Expr>,
+    pub Scan:ScanExpr,
+    pub Name:Vec<Vec<u8>>,
+    pub Ouput:Vec<Expr>,
 }
 impl fmt::Display for SelectExpr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

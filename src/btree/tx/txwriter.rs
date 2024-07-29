@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::{Arc, RwLock}};
 
-use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_UPSERT};
+use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, parser::{delete::DeleteExpr, insert::InsertExpr, select::SelectExpr, statement::SQLExpr, update::UpdateExpr}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_INSERT_ONLY, MODE_UPDATE_ONLY, MODE_UPSERT};
 
-use super::{tx::{self, Tx}, txScanner::{self, TxScanner}, txbiter::TxBIter, txinterface::{DBTxInterface, TxInterface, TxReadContext, TxReaderInterface, TxWriteContext}};
+use super::{tx::{self, Tx}, txRecord::{TxRecord, TxTable}, txScanner::{self, TxScanner}, txbiter::TxBIter, txinterface::{DBTxInterface, TxInterface, TxReadContext, TxReaderInterface, TxWriteContext}};
 
 
 pub struct txwriter{
@@ -215,6 +215,203 @@ impl TxInterface for txwriter{
 }
 
 impl txwriter{
+
+    pub fn ExecuteCommand(&mut self,expr:&SQLExpr)->Result<usize,BTreeError>
+    {
+        match &expr {
+            //SQLExpr::Select(expr) => return self.executeSelect(expr),
+            SQLExpr::Update(expr) => return self.executeUpdate(expr),
+            SQLExpr::Delete(expr) => return self.executeDelete(expr),
+            SQLExpr::Insert(expr) => return self.executeInsert(expr),
+            SQLExpr::CreatTable(v) => return self.createTable(v),
+            _Other => panic!("Not Supported")
+        }
+    }
+
+    pub fn Query(&mut self, cmd:&SelectExpr)->Result<(TxTable,Vec<TxRecord>),BTreeError>
+    {
+        let tdef = self.getTableDef(&cmd.Scan.Table.to_vec());
+        if tdef.is_none()
+        {
+            return Err(BTreeError::TableNotFind);
+        }
+
+        let tdef = tdef.unwrap();
+        let mut list = Vec::new();
+        let mut txTable = TxTable{
+            Name:tdef.Name.clone(),
+            Cols:Vec::new(),
+            Types:Vec::new(),
+        };
+
+        if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
+        {
+
+            for i in 0..cmd.Name.len()
+            {
+                if cmd.Name[i].len() == 0
+                {
+                    txTable.Cols.push(cmd.Ouput[i].to_string().as_bytes().to_vec());
+                }
+                else {
+                    txTable.Cols.push(cmd.Name[i].clone());
+                }
+            }
+
+            let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
+            match &mut scanner {
+                Ok(cursor) =>{
+                    while cursor.Valid(){
+                            let mut record: Record = Record::new(&tdef);
+                            cursor.Deref(self,&mut record);
+
+                            let mut rc: TxRecord = TxRecord::new();
+                            //Calc Column
+                            for i in 0..cmd.Ouput.len()
+                            {
+                                if let Ok(v) = cmd.Ouput[i].eval(&record)
+                                {
+                                    if i == 0
+                                    {
+                                        txTable.Types.push(v.GetValueType());
+                                    }
+                                    rc.Vals.push(v);
+                                }
+                            }
+                            list.push(rc);
+                            cursor.Next();
+                        }                
+                },
+                Err(err) => { return Err(BTreeError::NextNotFound)}
+            }
+        }
+
+        Ok((txTable,list))
+
+    }
+
+    fn executeUpdate(&mut self, cmd:&UpdateExpr)->Result<usize,BTreeError>
+    {
+        let tdef = self.getTableDef(&cmd.Scan.Table.to_vec());
+        if tdef.is_none()
+        {
+            return Err(BTreeError::TableNotFind);
+        }
+
+        let tdef = tdef.unwrap();
+        let mut count:usize = 0;
+        if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
+        {
+            let mut list = Vec::new();
+            let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
+            match &mut scanner {
+                Ok(cursor) =>{
+                    while cursor.Valid(){
+                            let mut record: Record = Record::new(&tdef);
+                            cursor.Deref(self,&mut record);
+                            list.push(record);
+                            cursor.Next();
+                        }                
+                },
+                Err(err) => { return Err(BTreeError::NextNotFound)}
+            }
+            for mut r in list
+            {
+                for i in 0..cmd.Name.len()
+                {
+                    if let Ok(v) = cmd.Values[i].eval(&r)
+                    {
+                        if let Err(ex) = r.Set(&cmd.Name[i], v)
+                        {
+                            return Err(BTreeError::EvalException);
+                        }
+                    }
+                }
+                if let Ok(v) = self.UpdateRecord(&mut r,MODE_UPDATE_ONLY)
+                {
+                     count += 1;
+                }
+            }
+        }
+
+        Ok(count)
+
+    }
+
+    fn executeDelete(&mut self, cmd:&DeleteExpr)->Result<usize,BTreeError>
+    {
+        let tdef = self.getTableDef(&cmd.Scan.Table.to_vec());
+        if tdef.is_none()
+        {
+            return Err(BTreeError::TableNotFind);
+        }
+
+        let tdef = tdef.unwrap();
+        let mut count:usize = 0;
+        if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
+        {
+            let mut list = Vec::new();
+            let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
+            match &mut scanner {
+                Ok(cursor) =>{
+                    while cursor.Valid(){
+                            let mut record: Record = Record::new(&tdef);
+                            cursor.Deref(self,&mut record);
+                            list.push(record);
+                            cursor.Next();
+                        }                
+                },
+                Err(err) => { return Err(BTreeError::NextNotFound)}
+            }
+            for r in list
+            {
+                if let Ok(v) = self.DeleteRecord(&r)
+                {
+                    if v == true
+                    {
+                        count += 1;
+                    }
+                }
+            }
+        }
+
+        Ok(count)
+    }
+
+    fn executeInsert(&mut self, cmd:&InsertExpr)->Result<usize,BTreeError>
+    {
+        let tdef = self.getTableDef(&cmd.TableName.to_vec());
+        if tdef.is_none()
+        {
+            return Err(BTreeError::TableNotFind);
+        }
+
+        let mut recordes = cmd.createQuest(&tdef.as_ref().unwrap());
+        let mut count:usize = 0;
+        for row in &mut recordes.unwrap()
+        {
+            if let Err(err) = self.UpdateRecord(row, MODE_INSERT_ONLY)
+            {
+                return Err(err);                
+            }
+            count += 1;
+        }
+
+        Ok(count)
+    }
+
+
+    fn createTable(&mut self, tdef:&TableDef)->Result<usize,BTreeError>
+    {
+        let mut tdef = tdef.clone();
+        if let Err(err) = self.AddTable(&mut tdef)
+        {
+            Err(err)
+        }
+        else {
+            Ok(1)
+        }
+    }
 
     fn SeekRecord(&self,idxNumber:i16, cmp1: OP_CMP, cmp2: Option<OP_CMP>, key1:&Record, key2:Option<&Record>)->Result<TxScanner,BTreeError> {
         

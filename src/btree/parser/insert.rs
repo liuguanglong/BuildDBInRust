@@ -3,16 +3,16 @@ use crate::btree::{btree::request::InsertReqest, table::{record::Record, table::
 use super::{expr::{id, Constant, Expr}, lib::*, sqlerror::SqlError, statement::*};
 
 pub struct InsertExpr{
-    Scan:Vec<u8>,
-    Name:Vec<Vec<u8>>,
-    Values:Vec<Vec<Value>>,
+    pub TableName:Vec<u8>,
+    pub Name:Vec<Vec<u8>>,
+    pub Values:Vec<Vec<Value>>,
 }
 
 impl InsertExpr{
     pub fn new(expr:String)->Self
     {
         InsertExpr{
-            Scan:expr.into_bytes(),
+            TableName:expr.into_bytes(),
             Name:Vec::new(),
             Values:Vec::new(),
         }
@@ -41,7 +41,7 @@ impl InsertExpr{
 
 impl fmt::Display for InsertExpr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Expr: => {} \n",String::from_utf8(self.Scan.to_vec()).unwrap());
+        write!(f, "Expr: => {} \n",String::from_utf8(self.TableName.to_vec()).unwrap());
         write!(f, "Columns:  \n");
         for i in 0..self.Name.len()
         {

@@ -12,3 +12,4 @@ mod txScanner;
 mod dbcontext;
 mod memoryContext;
 mod database;
+pub mod txRecord; 

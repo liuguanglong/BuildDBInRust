@@ -47,6 +47,19 @@ pub enum Value{
 
 impl Value{
 
+    pub fn GetValueType(&self)->ValueType
+    {
+        match  self {
+            Value::BYTES(_) => ValueType::BYTES,
+            Value::INT64(_) => ValueType::INT64,
+            Value::INT32(_) => ValueType::INT32,
+            Value::INT16(_) => ValueType::INT16,
+            Value::INT8(_) => ValueType::INT8,
+            Value::BOOL(_) => ValueType::BOOL,
+            Value::ID(_) => ValueType::ID,
+            Value::None => {panic!()},
+        }
+    }
     pub fn Add(&self,v:Value)->Result<Value,BTreeError>
     {
         match (self,v) {

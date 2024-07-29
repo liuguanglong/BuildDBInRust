@@ -113,7 +113,7 @@ impl ScanExpr{
     }
 
     //only support one column
-    pub fn createScan<'a>(&'a self,tdef:&'a TableDef)->Result<Option<(Record,Option<Record>,OP_CMP,Option<OP_CMP>)>,BTreeError>
+    pub fn createScan<'a>(&'a self,tdef:&'a TableDef)->Result<(Record,Option<Record>,OP_CMP,Option<OP_CMP>),BTreeError>
     {
         let mut cmp1 = OP_CMP::CMP_GE;
         let mut cmp2 = OP_CMP::CMP_GE;
@@ -190,16 +190,16 @@ impl ScanExpr{
             cmp1 = OP_CMP::CMP_GE;
             cmp2 = OP_CMP::CMP_LE;
 
-            return Ok(Some((key1,Some(key2),cmp1,Some(cmp2))));
+            return Ok((key1,Some(key2),cmp1,Some(cmp2)));
         }
 
         if Compare2.is_some()
         {
-            Ok(Some((key1,Some(key2),cmp1,Some(cmp2))))
+            Ok((key1,Some(key2),cmp1,Some(cmp2)))
         }
         else
         {
-            Ok(Some((key1,None,cmp1,None)))
+            Ok((key1,None,cmp1,None))
         }
 
     }
@@ -378,7 +378,7 @@ fn test_createScan(){
 
     let scan = ExprFrom().parse(expr);
     if let Ok(scan) = scan{
-        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        if let Ok((key1,key2,cmp1,cmp2)) = scan.1.createScan(&table)
         {
             println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.unwrap(),cmp1,cmp2.unwrap());
         }
@@ -386,7 +386,7 @@ fn test_createScan(){
 
     let scan = ExprFrom().parse(expr1);
     if let Ok(scan) = scan{
-        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        if let Ok((key1,key2,cmp1,cmp2)) = scan.1.createScan(&table)
         {
             println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.unwrap(),cmp1,cmp2.unwrap());
         }
@@ -395,7 +395,7 @@ fn test_createScan(){
 
     let scan = ExprFrom().parse(expr2);
     if let Ok(scan) = scan{
-        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        if let Ok((key1,key2,cmp1,cmp2)) = scan.1.createScan(&table)
         {
             println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.is_none(),cmp1,cmp2.is_none());
         }
@@ -403,7 +403,7 @@ fn test_createScan(){
 
     let scan = ExprFrom().parse(expr3);
     if let Ok(scan) = scan{
-        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        if let Ok((key1,key2,cmp1,cmp2)) = scan.1.createScan(&table)
         {
             println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.unwrap(),cmp1,cmp2.unwrap());
         }
@@ -411,7 +411,7 @@ fn test_createScan(){
 
     let scan = ExprFrom().parse(expr4);
     if let Ok(scan) = scan{
-        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        if let Ok((key1,key2,cmp1,cmp2)) = scan.1.createScan(&table)
         {
             println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.unwrap(),cmp1,cmp2.unwrap());
         }
@@ -419,7 +419,7 @@ fn test_createScan(){
 
     let scan = ExprFrom().parse(expr5);
     if let Ok(scan) = scan{
-        if let Ok(Some((key1,key2,cmp1,cmp2))) = scan.1.createScan(&table)
+        if let Ok((key1,key2,cmp1,cmp2)) = scan.1.createScan(&table)
         {
             println!("key1:{}|key2:{}|cmp1:{}|cmp2:{}| \n",key1,key2.unwrap(),cmp1,cmp2.unwrap());
         }

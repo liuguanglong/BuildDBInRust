@@ -86,7 +86,19 @@ impl Expr{
     fn evalNode(node:&Expr,rc:&Record)->Result<Value,BTreeError>
     {
         if node.val.is_some(){
-            return Ok(node.val.as_ref().unwrap().clone());
+            if let Value::ID(id) = node.val.as_ref().unwrap()
+            {
+                if let Some(v) =  rc.Get(id)
+                {
+                    return Ok(v);
+                }
+                else {
+                    return Err(BTreeError::EvalException);
+                }
+            }
+            else {
+                return Ok(node.val.as_ref().unwrap().clone());
+            }
         }
 
         let mut left = Value::None;
@@ -558,36 +570,6 @@ pub fn Expr<'a>() -> impl Parser<'a,Expr>
     )
 }
 
-// fn TupleItems<'a>() -> impl Parser<'a,Value>
-// {
-//     pair(
-//         pred(identifier,|v| notKey(v)),
-//         zero_or_more(right(space0(),
-//                             right(
-//                                 match_literal(","),
-//                                 right(space0(),pred(identifier,|v| notKey(v)))
-//                             )
-//                         )
-//                     )
-//     ).map( |(first,mut tail)| 
-//     {
-//         tail.insert(0, first);
-//         Value::Tuple(tail)
-//     }
-//     )
-// }
-
-// fn Tuple<'a>() -> impl Parser<'a,Value>
-// {
-//     right(
-//         match_literal("("),
-//         right(space0(), 
-//             left(TupleItems(), right(space0(),match_literal(")"))
-//             )
-//         )
-//     )
-// }
-
 #[test]
 fn EExpr_eval()
 {
@@ -608,6 +590,12 @@ fn EExpr_eval()
     r.Set("age".as_bytes(), Value::INT16(20));
     r.Set("married".as_bytes(), Value::BOOL(false));
 
+    let statement = "name";
+    let expr = Expr().parse(statement).unwrap().1;
+    let ret = expr.eval(&r);
+    assert!(ret.is_ok());
+    println!("Expr:{}  Result:{}",statement,ret.unwrap());
+
     let statement = "age + 40 ";
     let expr = Expr().parse(statement).unwrap().1;
     let ret = expr.eval(&r);
@@ -625,7 +613,7 @@ fn EExpr_eval()
     let ret = expr.eval(&r);
     assert!(ret.is_ok());
     println!("Expr:{}  Result:{}",statement,ret.unwrap());
-
+ 
 }
 
 #[test]
