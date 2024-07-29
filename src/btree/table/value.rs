@@ -1,8 +1,11 @@
-use std::fmt;
+use std::{cmp::Ordering, fmt};
 use serde::{Serialize, Deserialize};
+
+use crate::btree::{scan::comp::OP_CMP, BTreeError};
 
 pub enum ValueError{
     OperationNotSupported(String),
+    ParamNotFound(String),
 }
 
 #[derive(Serialize,Clone,Deserialize, Debug,PartialEq)]
@@ -44,7 +47,7 @@ pub enum Value{
 
 impl Value{
 
-    pub fn Add(&self,v:Value)->Result<Value,ValueError>
+    pub fn Add(&self,v:Value)->Result<Value,BTreeError>
     {
         match (self,v) {
             (Value::BYTES(v), Value::BYTES(v1)) => { let mut r = v.clone(); r.extend(&v1); Ok(Value::BYTES(r))},
@@ -64,11 +67,11 @@ impl Value{
             (Value::INT8(v), Value::INT32(v1)) => Ok(Value::INT8(v + v1 as i8)),
             (Value::INT8(v), Value::INT16(v1)) => Ok(Value::INT8(v + v1 as i8)),
             (Value::INT8(v), Value::INT8(v1)) => Ok(Value::INT8(v + v1 as i8)),
-            _Other => Err(ValueError::OperationNotSupported(String::from("Add"))),
+            _Other => Err(BTreeError::OperationNotSupported(String::from("Add"))),
         }
     }
 
-    pub fn Subtract(&self,v:Value)->Result<Value,ValueError>
+    pub fn Subtract(&self,v:Value)->Result<Value,BTreeError>
     {
         match (self,v) {
             (Value::INT64(v), Value::INT64(v1)) => Ok(Value::INT64(v - v1)),
@@ -87,11 +90,11 @@ impl Value{
             (Value::INT8(v), Value::INT32(v1)) => Ok(Value::INT8(v - v1 as i8)),
             (Value::INT8(v), Value::INT16(v1)) => Ok(Value::INT8(v - v1 as i8)),
             (Value::INT8(v), Value::INT8(v1)) => Ok(Value::INT8(v - v1 as i8)),
-            _Other => Err(ValueError::OperationNotSupported(String::from("Subtract"))),
+            _Other => Err(BTreeError::OperationNotSupported(String::from("Subtract"))),
         }
     }
 
-    pub fn Multiply(&self,v:Value)->Result<Value,ValueError>
+    pub fn Multiply(&self,v:Value)->Result<Value,BTreeError>
     {
         match (self,v) {
             (Value::INT64(v), Value::INT64(v1)) => Ok(Value::INT64(v * v1)),
@@ -110,11 +113,11 @@ impl Value{
             (Value::INT8(v), Value::INT32(v1)) => Ok(Value::INT8(v * v1 as i8)),
             (Value::INT8(v), Value::INT16(v1)) => Ok(Value::INT8(v * v1 as i8)),
             (Value::INT8(v), Value::INT8(v1)) => Ok(Value::INT8(v * v1 as i8)),
-            _Other => Err(ValueError::OperationNotSupported(String::from("Multiply"))),
+            _Other => Err(BTreeError::OperationNotSupported(String::from("Multiply"))),
         }
     }
 
-    pub fn Divide(&self,v:Value)->Result<Value,ValueError>
+    pub fn Divide(&self,v:Value)->Result<Value,BTreeError>
     {
         match (self,v) {
             (Value::INT64(v), Value::INT64(v1)) => Ok(Value::INT64(v / v1)),
@@ -133,11 +136,11 @@ impl Value{
             (Value::INT8(v), Value::INT32(v1)) => Ok(Value::INT8(v / v1 as i8)),
             (Value::INT8(v), Value::INT16(v1)) => Ok(Value::INT8(v / v1 as i8)),
             (Value::INT8(v), Value::INT8(v1)) => Ok(Value::INT8(v / v1 as i8)),
-            _Other => Err(ValueError::OperationNotSupported(String::from("Divide"))),
+            _Other => Err(BTreeError::OperationNotSupported(String::from("Divide"))),
         }
     }
 
-    pub fn Modulo(&self,v:Value)->Result<Value,ValueError>
+    pub fn Modulo(&self,v:Value)->Result<Value,BTreeError>
     {
         match (self,v) {
             (Value::INT64(v), Value::INT64(v1)) => Ok(Value::INT64(v % v1)),
@@ -156,38 +159,64 @@ impl Value{
             (Value::INT8(v), Value::INT32(v1)) => Ok(Value::INT8(v % v1 as i8)),
             (Value::INT8(v), Value::INT16(v1)) => Ok(Value::INT8(v % v1 as i8)),
             (Value::INT8(v), Value::INT8(v1)) => Ok(Value::INT8(v % v1 as i8)),
-            _Other => Err(ValueError::OperationNotSupported(String::from("Modulo"))),
+            _Other => Err(BTreeError::OperationNotSupported(String::from("Modulo"))),
         }
     }
 
-    pub fn Compare(&self,v:Value,f: fn(i64,i64) -> bool)->Result<Value,ValueError>
+    fn compare<T: PartialOrd>(a: T, b: T, op:OP_CMP) -> bool {
+        let order = a.partial_cmp(&b).unwrap();
+        match (op,order) {
+            (OP_CMP::CMP_GE, Ordering::Less) => false,
+            (OP_CMP::CMP_GE, Ordering::Equal) => true,
+            (OP_CMP::CMP_GE, Ordering::Greater) => true,
+            (OP_CMP::CMP_GT, Ordering::Less) => false,
+            (OP_CMP::CMP_GT, Ordering::Equal) => false,
+            (OP_CMP::CMP_GT, Ordering::Greater) => true,
+            (OP_CMP::CMP_LT, Ordering::Less) => true,
+            (OP_CMP::CMP_LT, Ordering::Equal) => false,
+            (OP_CMP::CMP_LT, Ordering::Greater) => false,
+            (OP_CMP::CMP_LE, Ordering::Less) => true,
+            (OP_CMP::CMP_LE, Ordering::Equal) => true,
+            (OP_CMP::CMP_LE, Ordering::Greater) => false,
+            (OP_CMP::CMP_EQ, Ordering::Less) => false,
+            (OP_CMP::CMP_EQ, Ordering::Equal) => true,
+            (OP_CMP::CMP_EQ, Ordering::Greater) => false,
+            (OP_CMP::CMP_UnEQ, Ordering::Less) => true,
+            (OP_CMP::CMP_UnEQ, Ordering::Equal) => false,
+            (OP_CMP::CMP_UnEQ, Ordering::Greater) => true,
+        }
+    }
+    
+    pub fn Compare(&self,v:Value,op:OP_CMP)->Result<Value,BTreeError>
     {
         match (self,v) {
-            (Value::INT64(v), Value::INT64(v1)) => Ok(Value::BOOL( f(*v,v1) )),
-            (Value::INT64(v), Value::INT32(v1)) => Ok(Value::BOOL( f(*v,v1 as i64))),
-            (Value::INT64(v), Value::INT16(v1)) => Ok(Value::BOOL( f(*v,v1 as i64))),
-            (Value::INT64(v), Value::INT8(v1)) => Ok(Value::BOOL(  f(*v,v1 as i64) )),
-            (Value::INT32(v), Value::INT64(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT32(v), Value::INT32(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT32(v), Value::INT16(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT32(v), Value::INT8(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT16(v), Value::INT64(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT16(v), Value::INT32(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT16(v), Value::INT16(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT16(v), Value::INT8(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT8(v), Value::INT64(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT8(v), Value::INT32(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT8(v), Value::INT16(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            (Value::INT8(v), Value::INT8(v1)) => Ok(Value::BOOL( f(*v as i64,v1 as i64))),
-            _Other => Err(ValueError::OperationNotSupported(String::from("Compare"))),
+            (Value::INT64(v), Value::INT64(v1)) => Ok(Value::BOOL( Self::compare(v,&v1,op) )),
+            (Value::INT64(v), Value::INT32(v1)) => Ok(Value::BOOL( Self::compare(v,&(v1 as i64),op) )),
+            (Value::INT64(v), Value::INT16(v1)) => Ok(Value::BOOL(Self::compare(v,&(v1 as i64),op) )),
+            (Value::INT64(v), Value::INT8(v1)) => Ok(Value::BOOL(  Self::compare(v,&(v1 as i64),op) )),
+            (Value::INT32(v), Value::INT64(v1)) => Ok(Value::BOOL( Self::compare(v,&(v1 as i32),op) )),
+            (Value::INT32(v), Value::INT32(v1)) => Ok(Value::BOOL(Self::compare(v,&(v1 as i32),op) )),
+            (Value::INT32(v), Value::INT16(v1)) => Ok(Value::BOOL(Self::compare(v,&(v1 as i32),op) )),
+            (Value::INT32(v), Value::INT8(v1)) => Ok(Value::BOOL( Self::compare(v,&(v1 as i32),op) )),
+            (Value::INT16(v), Value::INT64(v1)) => Ok(Value::BOOL( Self::compare(v,&(v1 as i16),op) )),
+            (Value::INT16(v), Value::INT32(v1)) => Ok(Value::BOOL(  Self::compare(v,&(v1 as i16),op) )),
+            (Value::INT16(v), Value::INT16(v1)) => Ok(Value::BOOL(  Self::compare(v,&(v1 as i16),op) )),
+            (Value::INT16(v), Value::INT8(v1)) => Ok(Value::BOOL(  Self::compare(v,&(v1 as i16),op) )),
+            (Value::INT8(v), Value::INT64(v1)) => Ok(Value::BOOL(  Self::compare(v,&(v1 as i8),op) )),
+            (Value::INT8(v), Value::INT32(v1)) => Ok(Value::BOOL( Self::compare(v,&(v1 as i8),op) )),
+            (Value::INT8(v), Value::INT16(v1)) => Ok(Value::BOOL(  Self::compare(v,&(v1 as i8),op) )),
+            (Value::INT8(v), Value::INT8(v1)) => Ok(Value::BOOL(  Self::compare(v,&(v1 as i8),op) )),
+            (Value::BYTES(v), Value::BYTES(v1)) => Ok(Value::BOOL(  Self::compare(v,&v1,op) )),
+            
+            _Other => Err(BTreeError::OperationNotSupported(String::from("Compare"))),
         }
     }
 
-    pub fn LogicOp(&self,v:Value,f: fn(bool,bool) -> bool)->Result<Value,ValueError>
+    pub fn LogicOp(&self,v:Value,f: fn(bool,bool) -> bool)->Result<Value,BTreeError>
     {
         match (self,v) {
             (Value::BOOL(v), Value::BOOL(v1)) => Ok(Value::BOOL( f(*v,v1))),
-            _Other => Err(ValueError::OperationNotSupported(String::from("Compare"))),
+            _Other => Err(BTreeError::OperationNotSupported(String::from("Compare"))),
         }
     }
     pub fn MatchValueType(&self,t:&ValueType) -> bool

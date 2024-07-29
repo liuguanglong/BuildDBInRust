@@ -42,6 +42,8 @@ pub enum BTreeError{
     IndexNotFoundError,
     BadSearchCondition,
     EvalException,
+    OperationNotSupported(String),
+    ParamNotFound(String),
 
 }
 
@@ -65,6 +67,8 @@ impl fmt::Display for BTreeError {
             BTreeError::IndexNotFoundError => write!(f,"Index is not found!"),
             BTreeError::BadSearchCondition => write!(f,"Bad Search Condition!"),
             BTreeError::EvalException => write!(f,"Exception occured when trying to eval expr!"),
+            BTreeError::OperationNotSupported(v) => write!(f, "Operation is not supported! :{}", v),
+            BTreeError::ParamNotFound(v) => write!(f, "Param is not found! :{}", v),
         }
     }
 }

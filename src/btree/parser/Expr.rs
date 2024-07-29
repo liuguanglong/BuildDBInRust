@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::btree::{table::{record::Record, value::{Value, ValueError}}, BTreeError};
+use crate::btree::{scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueError, ValueType}}, BTreeError};
 
 use super::lib::*;
 
@@ -108,7 +108,7 @@ impl Expr{
 
         if node.right.as_ref().is_none()
         {
-            return Self::EvalUnaryExpr(&node.op,&left);
+            return Self::EvalUnaryExpr(&node.op,&left,rc);
         }
 
         let mut right = Value::None;
@@ -128,7 +128,7 @@ impl Expr{
             }
         }
 
-        if let Ok(v) = Self::EvalBinaryExpr(&node.op,&left,&right)
+        if let Ok(v) = Self::EvalBinaryExpr(&node.op,&left,&right,rc)
         {
             return Ok(v);
         }
@@ -139,50 +139,92 @@ impl Expr{
         
     }
 
-    fn EvalBinaryExpr(op:&ExpressionType,left:&Value,right:&Value)->Result<Value,ValueError>
+    fn EvalParam(id:&Vec<u8>,rc:&Record)->Option<Value>
     {
+        rc.Get(&id)
+    }
+
+    fn EvalBinaryExpr(op:&ExpressionType,leftValue:&Value,rightValue:&Value,rc:&Record)->Result<Value,BTreeError>
+    {
+        let mut left = leftValue.clone();
+        if let Value::ID(id) = leftValue
+        {
+            if let Some(v) = rc.Get(&id)
+            {
+                left = v;
+            }
+            else {
+                return Err(BTreeError::ParamNotFound(String::from_utf8(id.to_vec()).unwrap()))
+            }
+        }
+
+        let mut right = rightValue.clone();
+        if let Value::ID(id) = rightValue
+        {
+            if let Some(v) = rc.Get(&id)
+            {
+                right = v;
+            }
+            else {
+                return Err(BTreeError::ParamNotFound(String::from_utf8(id.to_vec()).unwrap()))
+            }
+        }
+
         match op {
             ExpressionType::Add => return left.Add(right.clone()),
             ExpressionType::Subtract => return left.Subtract(right.clone()),
             ExpressionType::Multiply => return left.Multiply(right.clone()),
             ExpressionType::Divide => return left.Divide(right.clone()),
             ExpressionType::Modulo => return left.Modulo(right.clone()),
-            ExpressionType::LT => return left.Compare(right.clone(), |x,y| x < y),
-            ExpressionType::LE => return left.Compare(right.clone(), |x,y| x <= y),
-            ExpressionType::GE => return left.Compare(right.clone(), |x,y| x >= y),
-            ExpressionType::GT => return left.Compare(right.clone(), |x,y| x > y),
+            ExpressionType::LT => return left.Compare(right.clone(),OP_CMP::CMP_LT),
+            ExpressionType::LE => return left.Compare(right.clone(),OP_CMP::CMP_LE),
+            ExpressionType::GE => return left.Compare(right.clone(),OP_CMP::CMP_GE),
+            ExpressionType::GT => return left.Compare(right.clone(),OP_CMP::CMP_GT),
             ExpressionType::AND => return left.LogicOp(right.clone(), |x,y| x && y),
             ExpressionType::OR => return left.LogicOp(right.clone(), |x,y| x || y),
-            ExpressionType::EQ =>return left.LogicOp(right.clone(), |x,y| x == y),
-            ExpressionType::UnEQ => return left.LogicOp(right.clone(), |x,y| x != y),
-            _Other => return Err( ValueError::OperationNotSupported(String::from("")) ),
+            ExpressionType::EQ =>return left.Compare(right.clone(),OP_CMP::CMP_EQ),
+            ExpressionType::UnEQ => return left.Compare(right.clone(),OP_CMP::CMP_UnEQ),
+            _Other => return Err( BTreeError::OperationNotSupported(String::from("")) ),
         };
 
-        Err( ValueError::OperationNotSupported(String::from("")) )
+        Err( BTreeError::OperationNotSupported(String::from("")) )
     }
 
-    fn EvalUnaryExpr(op:&ExpressionType,v:&Value)->Result<Value,BTreeError>
+    fn EvalUnaryExpr(op:&ExpressionType,leftValue:&Value,rc:&Record)->Result<Value,BTreeError>
     {
+        let mut value = leftValue.clone();
+        if let Value::ID(id) = leftValue
+        {
+            if let Some(v) = rc.Get(&id)
+            {
+                value = v;
+            }
+            else {
+                return Err(BTreeError::ParamNotFound(String::from_utf8(id.to_vec()).unwrap()))
+            }
+        }
+
+
         if *op == ExpressionType::UnOP
         {
-            match  v {
-                Value::INT64(v) => Ok(Value::INT64(-v)),
-                Value::INT32(v) => Ok(Value::INT32(-v)),
-                Value::INT16(v) => Ok(Value::INT16(-v)),
-                Value::INT8(v) => Ok(Value::INT8(-v)),
-                _Other => Err(BTreeError::EvalException),
+            match &value {
+                Value::INT64(ref v) => return Ok(Value::INT64(-v)),
+                Value::INT32(ref v) => return Ok(Value::INT32(-v)),
+                Value::INT16(ref v) => return Ok(Value::INT16(-v)),
+                Value::INT8(ref v) => return Ok(Value::INT8(-v)),
+                _Other => return Err(BTreeError::OperationNotSupported(String::from("-")) ),
             };
         }
 
         if *op == ExpressionType::NOT
         {
-            match  v {
-                Value::BOOL(v) =>  Ok(Value::BOOL(!v)),
-                _Other => Err(BTreeError::EvalException),
+            match &value {
+                Value::BOOL(ref v1) =>  return Ok(Value::BOOL(!v1)),
+                _Other => return Err(BTreeError::OperationNotSupported(String::from("Not")) ),
             };
         }
 
-        Err(BTreeError::EvalException)
+        Err(BTreeError::OperationNotSupported(String::from("")) )
     }
 
 }
@@ -535,16 +577,43 @@ pub fn Expr<'a>() -> impl Parser<'a,Expr>
 // }
 
 #[test]
-fn singlequoted_string_parse()
+fn EExpr_eval()
 {
-    // let exp = "name, age ,address, id, e";
-    // let ret = TupleItems().parse(exp).unwrap();
-    // println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+    let mut table = TableDef{
+        Prefix:0,
+        Name: "person".as_bytes().to_vec(),
+        Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
+        Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
+        PKeys : 0,
+        Indexes : vec![vec!["address".as_bytes().to_vec() , "married".as_bytes().to_vec()],vec!["name".as_bytes().to_vec()]],
+        IndexPrefixes : vec![],
+    };
 
-    // println!("");
-    // let exp = "( name, age ,address, id, e )";
-    // let ret = Tuple().parse(exp).unwrap();
-    // println!("{}  Expr:{}  Next:{}",exp,ret.1,ret.0);
+    let mut r = Record::new(&table);
+    r.Set("id".as_bytes(), Value::BYTES(("21").as_bytes().to_vec()));
+    r.Set( "name".as_bytes(), Value::BYTES(("Bob504").as_bytes().to_vec()));
+    r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+    r.Set("age".as_bytes(), Value::INT16(20));
+    r.Set("married".as_bytes(), Value::BOOL(false));
+
+    let statement = "age + 40 ";
+    let expr = Expr().parse(statement).unwrap().1;
+    let ret = expr.eval(&r);
+    assert!(ret.is_ok());
+    println!("Expr:{}  Result:{}",statement,ret.unwrap());
+
+    let statement = "-age + 60 ";
+    let expr = Expr().parse(statement).unwrap().1;
+    let ret = expr.eval(&r);
+    assert!(ret.is_ok());
+    println!("Expr:{}  Result:{}",statement,ret.unwrap());
+
+    let statement = "id='21' and age >= 20 ";
+    let expr = Expr().parse(statement).unwrap().1;
+    let ret = expr.eval(&r);
+    assert!(ret.is_ok());
+    println!("Expr:{}  Result:{}",statement,ret.unwrap());
+
 }
 
 #[test]
