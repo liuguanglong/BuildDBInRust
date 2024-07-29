@@ -1,15 +1,15 @@
-mod txdemo;
+pub mod txdemo;
 pub mod txinterface;
 pub mod windowsfileContext;
-mod txreader;
-mod txbiter;
+pub mod txreader;
+pub mod txbiter;
 
-mod winmmap;
-mod txfreelist;
-mod tx;
-mod txwriter;
-mod txScanner;
-mod dbcontext;
-mod memoryContext;
-mod database;
+pub mod winmmap;
+pub mod txfreelist;
+pub mod tx;
+pub mod txwriter;
+pub mod txScanner;
+pub mod dbcontext;
+pub mod memoryContext;
+pub mod database;
 pub mod txRecord; 

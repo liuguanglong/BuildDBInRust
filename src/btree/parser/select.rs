@@ -36,12 +36,13 @@ fn ExprSelectItem<'a>() -> impl Parser<'a,(Expr,Vec<u8>)>
     pair(
         Expr(),
         remove_lead_space(
-            either(
+            either3(
                 map(is_literal(","),|c| Vec::new()),
                 right(
                     match_literal("as"),
                     remove_lead_space(id_string())
-                ).map( |c| c.into_bytes())
+                ).map( |c| c.into_bytes()),
+                map(is_literal("from"),|c| Vec::new()),
             )      
         )
     )
@@ -100,7 +101,7 @@ fn test_selectitem_expr() {
     let ret = ExprSelectItem().parse(exp).unwrap();
     println!("{} Next:{} as:{}  expr:{}",exp,ret.0, String::from_utf8(ret.1.1).unwrap(), ret.1.0);
 
-    let exp = "select a,b,c,a*c as f, d + 'abc ' as g from";
+    let exp = "select id,name,dsaf,afdmasdf,2,dsaf,3,456,address from ;";
     let ret = ExprSelectItems().parse(exp).unwrap();
     println!("{} Next:{}",exp,ret.0);
     for item in ret.1
@@ -141,4 +142,106 @@ fn test_scan_expr() {
     let ret = ExprFrom().parse(exp).unwrap();
     println!("{}  Scan:|{}  Next:{}",exp,ret.1,ret.0);
     
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::{sync::{Arc, Mutex, RwLock}, thread, time::Duration};
+    use rand::Rng;
+
+    use crate::btree::{db::{TDEF_META, TDEF_TABLE}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueType}}, tx::{database::Database, dbcontext::DbContext, memoryContext::memoryContext, txfreelist::FreeListData, txinterface::{DBReadInterface, DBTxInterface, TxContent, TxReadContext}, txwriter::txwriter}, BTREE_PAGE_SIZE, MODE_UPSERT};
+    use super::*;
+    use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL}};
+
+    #[test]
+    fn test_query()
+    {
+        let mut mctx = Arc::new(RwLock::new(memoryContext::new(BTREE_PAGE_SIZE,1000)));
+        let mut context = DbContext::new(mctx.clone());
+        let mut db = Arc::new(Mutex::new(Database::new(context).unwrap()));
+
+        let mut db1 = db.clone();
+        let mut dbinstance =  db1.lock().unwrap();
+        let mut tx = dbinstance.begin().unwrap();
+        drop(dbinstance);
+
+        let mut table = TableDef{
+            Prefix:0,
+            Name: "person".as_bytes().to_vec(),
+            Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
+            Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
+            PKeys : 0,
+            Indexes : vec![vec!["address".as_bytes().to_vec() , "married".as_bytes().to_vec()],vec!["name".as_bytes().to_vec()]],
+            IndexPrefixes : vec![],
+        };
+
+        let ret = tx.AddTable(&mut table);
+        if let Err(ret) = ret
+        {
+            println!("Error when add table:{}",ret);
+        }
+
+        let mut dbinstance =  db.lock().unwrap();
+        dbinstance.commmit(&mut tx);
+        drop(dbinstance);
+
+        let mut dbinstance =  db.lock().unwrap();
+        let mut tx  = dbinstance.begin().unwrap();        
+        drop(dbinstance);   
+
+        let ret = tx.getTableDef("person".as_bytes());
+        if let Some(tdef) = ret
+        {
+            println!("Table define:{}",tdef);
+            let mut r = Record::new(&tdef);
+
+            for i in 0..100 {
+                r.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
+                r.Set( "name".as_bytes(), Value::BYTES(format!("Bob{}", i).as_bytes().to_vec()));
+                r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+                r.Set("age".as_bytes(), Value::INT16(20));
+                r.Set("married".as_bytes(), Value::BOOL(false));
+
+                tx.UpdateRecord(&mut r,crate::btree::MODE_UPSERT);
+            }
+
+            r.Set("id".as_bytes(), Value::BYTES(("21").as_bytes().to_vec()));
+            r.Set( "name".as_bytes(), Value::BYTES(("Bob504").as_bytes().to_vec()));
+            r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
+            r.Set("age".as_bytes(), Value::INT16(20));
+            r.Set("married".as_bytes(), Value::BOOL(false));
+
+            tx.UpdateRecord(&mut r,crate::btree::MODE_UPSERT);
+
+
+            r.Set("id".as_bytes(), Value::BYTES(("22").as_bytes().to_vec()));
+            tx.DeleteRecord(&mut r);
+
+            let statements = "select id,name,address, age + 40 as newage, age from person index by name >= 'Bob1' and name < 'Bob5' ;";
+            if let Ok((ret,sqlExprList)) = ExprSQLList().parse(&statements)
+            {
+                for sql in sqlExprList
+                {
+                    if let SQLExpr::Select(sql) = sql
+                    {
+                        if let Ok((table,rows)) = tx.Query(&sql)
+                        {
+                            println!("Table:{}\n",String::from_utf8(table.Name.to_vec()).unwrap());
+                            for i in 0..table.Cols.len()
+                            {
+                                print!("{}:{}|",String::from_utf8(table.Cols[i].to_vec()).unwrap(),table.Types[i]);
+                            }
+                            println!("");
+                            for r in rows
+                            {
+                                print!("{}\n",r);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 }
