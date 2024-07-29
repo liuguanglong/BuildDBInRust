@@ -207,6 +207,7 @@ impl Value{
             (Value::INT8(v), Value::INT16(v1)) => Ok(Value::BOOL(  Self::compare(v,&(v1 as i8),op) )),
             (Value::INT8(v), Value::INT8(v1)) => Ok(Value::BOOL(  Self::compare(v,&(v1 as i8),op) )),
             (Value::BYTES(v), Value::BYTES(v1)) => Ok(Value::BOOL(  Self::compare(v,&v1,op) )),
+            (Value::BOOL(v), Value::BOOL(v1)) => Ok(Value::BOOL(  Self::compare(v,&v1,op) )),
             
             _Other => Err(BTreeError::OperationNotSupported(String::from("Compare"))),
         }

@@ -3,7 +3,7 @@ use crate::btree::{scan::comp::OP_CMP, table::{record::Record, table::TableDef, 
 
 use super::lib::*;
 
-const KEYS: [&str; 17] = ["select", "not", "and", "index", "from","filter","or","limit","by","as","insert","into","values","create","table","primary","key"];
+const KEYS: [&str; 19] = ["select", "not", "and", "index", "from","filter","or","limit","by","as","insert","into","values","create","table","primary","key","true","false"];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
@@ -366,6 +366,13 @@ pub fn id<'a>() -> impl Parser<'a,Value>{
     })
 }
 
+fn truelfase<'a>() -> impl Parser<'a,Value>
+{
+    either(
+        remove_lead_space_and_newline(match_literal("true")).map(|v| Value::BOOL(true)),
+        remove_lead_space_and_newline(match_literal("false")).map(|v| Value::BOOL(false))
+    )
+} 
 
 
 fn notKey(v:&String) -> bool
@@ -402,7 +409,12 @@ fn singlequoted_string<'a>() -> impl Parser<'a,Value>
 
 pub fn Constant<'a>() -> impl Parser<'a,Value>
 {
-    either(number_i64(), either(id(),singlequoted_string()))
+    either4(
+        number_i64(), 
+        id(),
+        singlequoted_string(),
+        truelfase()
+    )
 }
 
 fn OpNegtive<'a>() -> impl Parser<'a,ExpressionType>
@@ -608,7 +620,7 @@ fn EExpr_eval()
     assert!(ret.is_ok());
     println!("Expr:{}  Result:{}",statement,ret.unwrap());
 
-    let statement = "id='21' and age >= 20 ";
+    let statement = "married = false and name = 'Bob504' and age <= 20 ";
     let expr = Expr().parse(statement).unwrap().1;
     let ret = expr.eval(&r);
     assert!(ret.is_ok());
