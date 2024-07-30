@@ -128,7 +128,7 @@ impl TxContent for Database
 #[cfg(test)]
 mod tests {
 
-    use std::{sync::{Arc, Mutex, RwLock}, thread, time::Duration};
+    use std::{fmt::Write, sync::{Arc, Mutex, RwLock}, thread, time::Duration};
     use rand::Rng;
 
     use crate::btree::{db::{TDEF_META, TDEF_TABLE}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueType}}, tx::{memoryContext::memoryContext, txdemo::Shared, txinterface::{DBReadInterface, DBTxInterface, TxReadContext}, txwriter::txwriter, winmmap::Mmap}, BTREE_PAGE_SIZE, MODE_UPSERT};
@@ -227,27 +227,31 @@ mod tests {
         let mut context = DbContext::new(mctx.clone());
         let db = Shared::new(Database::new(context).unwrap());
 
-        let mut table = TableDef{
-            Prefix:0,
-            Name: "person".as_bytes().to_vec(),
-            Types : vec![ValueType::BYTES, ValueType::BYTES,ValueType::BYTES, ValueType::INT16, ValueType::BOOL ] ,
-            Cols : vec!["id".as_bytes().to_vec() , "name".as_bytes().to_vec(),"address".as_bytes().to_vec(),"age".as_bytes().to_vec(),"married".as_bytes().to_vec() ] ,
-            PKeys : 0,
-            Indexes : vec![vec!["address".as_bytes().to_vec() , "married".as_bytes().to_vec()],vec!["name".as_bytes().to_vec()]],
-            IndexPrefixes : vec![],
-        };
+        let createTable = r#"
+        create table person
+        ( 
+            id vchar,
+            name vchar,
+            address vchar,
+            age int16,
+            married bool,
+            primary key (id),
+            index (address,married),
+            index (name),
+        );
+       "#;
 
         let mut db1 = db.clone();
         let mut dbinstance =  db1.lock().unwrap();
         let mut tx = dbinstance.begin().unwrap();
-        let ret = tx.AddTable(&mut table);
+        let ret = tx.ExecuteSQLStatments(createTable.to_string());
+        //let ret = tx.AddTable(&mut table);
         if let Err(ret) = ret
         {
             println!("Error when add table:{}",ret);
         }
         dbinstance.commmit(&mut tx);
         drop(dbinstance);        
-
 
         let mut handles = vec![];
 
@@ -294,22 +298,20 @@ mod tests {
         let mut tx = dbinstance.begin().unwrap();
         drop(dbinstance);
 
-        let ret = tx.getTableDef("person".as_bytes());
-         if let Some(tdef) = ret
-         {
-            //println!("Table define:{}",tdef);
-            let mut r = Record::new(&tdef);
+        let mut sql:String = String::new();
+        let insert = r#"
+        insert into person
+        ( id, name, address, age, married )
+        values
 
-            r.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
-            r.Set( "name".as_bytes(), Value::BYTES(format!("Bob{}", i).as_bytes().to_vec()));
-            r.Set("address".as_bytes(), Value::BYTES("Montrel Canada H9T 1R5".as_bytes().to_vec()));
-            r.Set("age".as_bytes(), Value::INT16(20));
-            r.Set("married".as_bytes(), Value::BOOL(false));
+        "#;
+        sql.push_str(&insert);
+        sql.push_str(format!("('{}','Bob{}','Montrel Canada H9T 1R5',20,false),", i,i).as_str());
+        sql.remove(sql.len() -1 );
+        sql.push(';');
 
-            tx.UpdateRecord(&mut r,crate::btree::MODE_UPSERT);
-        }
-
-        println!("root :{}",tx.context.get_root());
+        let ret = tx.ExecuteSQLStatments(sql);
+        //println!("root :{}",tx.context.get_root());
         //commit tx
         let mut dbinstance =  db.lock().unwrap();
         dbinstance.commmit(&mut tx);
@@ -324,7 +326,7 @@ mod tests {
     fn read(i:u64,db:Shared<Database>)
     {
         let mut rng = rand::thread_rng();
-        let random_number: u64 = rng.gen_range(5..20);
+        let random_number: u64 = rng.gen_range(10..20);
         //thread::sleep(Duration::from_millis(random_number));
         
         let mut dbinstance =  db.lock().unwrap();
@@ -332,29 +334,13 @@ mod tests {
         drop(dbinstance);
 
         println!("Begin Read:{}",i);        
-        
-        let ret = reader.getTableDef("person".as_bytes());
-        if let Some(tdef) = ret
+        let statements = format!("select id,name,address, age from person index by id = '{}';",i);
+        if let Ok(list) = reader.ExecuteSQLStatments(statements)
         {
-            let mut key1 = Record::new(&tdef);
-            let mut key2 = Record::new(&tdef);
-            key1.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
-            key2.Set("id".as_bytes(), Value::BYTES(format!("{}", i).as_bytes().to_vec()));
-            //let mut scanner = dbinstance.Seek(1,OP_CMP::CMP_GT, OP_CMP::CMP_LE, &key1, &key2);
-            let mut scanner = reader.Scan(OP_CMP::CMP_GE, Some(OP_CMP::CMP_LE), &key1, Some(&key2));
-    
-            let mut r3 = Record::new(&tdef);
-            match &mut scanner {
-                Ok(cursor) =>{
-                    while cursor.Valid(){
-                            cursor.Deref(&reader,&mut r3);
-                            println!("{}", r3);
-                            cursor.Next();
-                        }                
-                },
-                Err(err) => { println!("Error when add table:{}",err)}
-                
-            }    
+            for table in list
+            {
+                println!("{}",table);
+            }
         }
         println!("End Read:{}",i);        
 

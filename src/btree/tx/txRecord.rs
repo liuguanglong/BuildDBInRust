@@ -13,14 +13,18 @@ impl<'a> fmt::Display for DataTable{
 
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f,"Table:{}\n",String::from_utf8(self.Name.to_vec()).unwrap());
-        for i in 0..self.Cols.len()
+
+        if self.Rows.len() > 0
         {
-            write!(f,"{}:{}|",String::from_utf8(self.Cols[i].to_vec()).unwrap(),self.Types[i]);
-        }
-        println!("");
-        for r in &self.Rows
-        {
-            write!(f,"{}\n",*r);
+            for i in 0..self.Cols.len()
+            {
+                write!(f,"{}:{}|",String::from_utf8(self.Cols[i].to_vec()).unwrap(),self.Types[i]);
+            }
+            write!(f,"\n");
+            for r in &self.Rows
+            {
+                write!(f,"{}\n",*r);
+            }
         }
         write!(f,"")
     }

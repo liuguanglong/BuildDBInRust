@@ -125,9 +125,12 @@ impl TxReader{
             }
         }
 
-        for v in &txTable.Rows.get(0).as_ref().unwrap().Vals
-        {   
-            txTable.Types.push(v.GetValueType());
+        if txTable.Rows.len() > 0
+        {
+            for v in &txTable.Rows.get(0).as_ref().unwrap().Vals
+            {   
+                txTable.Types.push(v.GetValueType());
+            }
         }
 
         Ok(txTable)
