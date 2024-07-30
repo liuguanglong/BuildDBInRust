@@ -80,7 +80,7 @@ impl TxReader{
             {
                 key2.unwrap().encodeKeyPartial(idxNumber as usize,&mut keyEnd,&cmp2.unwrap());
             }
-            println!("KeyStart:{:?}  KeyEnd:{:?}",keyStart,keyEnd);
+            //println!("KeyStart:{:?}  KeyEnd:{:?}",keyStart,keyEnd);
         }
 
         let iter = self.Seek(&keyStart, cmp1);

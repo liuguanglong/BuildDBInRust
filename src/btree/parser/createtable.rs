@@ -127,7 +127,7 @@ pub fn ExprCreateTable<'a>() -> impl Parser<'a,TableDef>
             }
         }
 
-        def.PKeys = pkey as u16 + 1;
+        def.PKeys = pkey as u16;
 
         for i in indexes
         {

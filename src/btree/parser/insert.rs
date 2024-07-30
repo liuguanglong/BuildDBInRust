@@ -239,3 +239,95 @@ fn test_statement_expr() {
    println!("\n{} Next:{}\n Insert:{}",exp,ret.0,ret.1);
     
 }
+
+
+#[cfg(test)]
+mod tests {
+
+    use std::{sync::{Arc, Mutex, RwLock}, thread, time::Duration};
+    use rand::Rng;
+
+    use crate::btree::{db::{TDEF_META, TDEF_TABLE}, parser::createtable::ExprCreateTable, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueType}}, tx::{database::Database, dbcontext::DbContext, memoryContext::memoryContext, txfreelist::FreeListData, txinterface::{DBReadInterface, DBTxInterface, TxContent, TxReadContext}, txwriter::txwriter}, BTREE_PAGE_SIZE, MODE_UPSERT};
+    use super::*;
+    use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL}};
+
+    #[test]
+    fn test_insert()
+    {
+        let mut mctx = Arc::new(RwLock::new(memoryContext::new(BTREE_PAGE_SIZE,1000)));
+        let mut context = DbContext::new(mctx.clone());
+        let mut db = Arc::new(Mutex::new(Database::new(context).unwrap()));
+
+        let mut db1 = db.clone();
+        let mut dbinstance =  db1.lock().unwrap();
+        let mut tx = dbinstance.begin().unwrap();
+        drop(dbinstance);
+
+        let mut sql:String = String::new();
+        let createTable = r#"
+        create table person
+        ( 
+            id vchar,
+            name vchar,
+            address vchar,
+            age int16,
+            married bool,
+            primary key (id),
+            index (address,married),
+            index (name),
+        );
+       "#;
+       sql.push_str(createTable);
+
+       let insert = r#"
+            insert into person
+            ( id, name, address, age, married )
+            values
+
+        "#;
+        sql.push_str(&insert);
+
+        for i in 0..100{
+            sql.push_str(format!("('{}','Bob{}','Montrel Canada H9T 1R5',20,false),", i,i).as_str())
+        }
+
+        sql.remove(sql.len() -1 );
+        sql.push(';');
+
+        let delete = "delete from person index by id = '45';";
+        sql.push_str(delete);
+
+        let update = "update person set name = 'Bob800' index by id = '44';";
+        sql.push_str(update);
+
+        let statements = "select id,name,address, age + 40 as newage, age from person index by name < 'Bob50' and name > 'Bob4' filter id < '48' limit 6 offset 2;";
+        sql.push_str(statements);
+
+        println!("sql:{}",sql);
+
+        let ret = ExprSQLList().parse(&sql);
+
+        if let Ok((ret,sqlExprList)) = ret
+        {
+            for sql1 in sqlExprList
+            {
+                match &sql1 {
+                    SQLExpr::Select(expr) => {
+                        if let Ok(table) = tx.Query(&expr)
+                        {
+                            println!("{}",table);
+                        }
+                    },
+                    expr@Other => {
+                        if let Ok(affected) = tx.ExecuteCommand(&expr)
+                        {
+                            println!("affected: {}",affected);
+                        }
+                    },
+                }
+                 
+            }
+        }
+    }
+
+}

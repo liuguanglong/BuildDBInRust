@@ -228,50 +228,6 @@ impl txwriter{
         }
     }
 
-
-    fn Search<F>(&mut self,tdef:&TableDef,expr:&ScanExpr,process_record:&mut F)->Result<(),BTreeError>
-    where 
-        F: for<'a> FnMut(Record)
-    {
-        if let Ok((key1,key2,cmp1,cmp2)) = expr.createScan(&tdef)
-        {
-            let mut index:usize = 0;
-            let mut count:usize = 0;
-            let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
-            match &mut scanner {
-                Ok(cursor) =>{
-                    while cursor.Valid(){
-
-                            let mut status = expr.Offset <= index && expr.Limit >= count;
-                            let mut record: Record = Record::new(&tdef);
-                            if status == true
-                            {
-                                cursor.Deref(self,&mut record);
-    
-                                if let Some(filter) = &expr.Filter
-                                {
-                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
-                                   status = status && filterStatus;
-                                }
-                            }
-
-                            if status == true
-                            {    
-                                process_record(record);
-                                count += 1;
-                            }
-
-                            index += 1;
-                            cursor.Next();
-                        }                
-                },
-                Err(err) => { return Err(BTreeError::NextNotFound)}
-            }
-        }
-        Ok(())
-    }
-
-
     pub fn Query(&mut self, cmd:&SelectExpr)->Result<DataTable,BTreeError>
     {
         let tdef = self.getTableDef(&cmd.Scan.Table.to_vec());
