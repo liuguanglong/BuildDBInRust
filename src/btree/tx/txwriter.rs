@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Display, sync::{Arc, RwLock}};
 
-use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, parser::{delete::DeleteExpr, expr::Expr, insert::InsertExpr, select::SelectExpr, statement::SQLExpr, update::UpdateExpr}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_INSERT_ONLY, MODE_UPDATE_ONLY, MODE_UPSERT};
+use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, parser::{delete::DeleteExpr, expr::Expr, insert::InsertExpr, select::SelectExpr, statement::{SQLExpr, ScanExpr}, update::UpdateExpr}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_INSERT_ONLY, MODE_UPDATE_ONLY, MODE_UPSERT};
 
 use super::{tx::{self, Tx}, txRecord::{DataRow, DataTable, TxRecord, TxTable}, txScanner::{self, TxScanner}, txbiter::TxBIter, txinterface::{DBTxInterface, TxInterface, TxReadContext, TxReaderInterface, TxWriteContext}};
 
@@ -228,6 +228,50 @@ impl txwriter{
         }
     }
 
+
+    fn Search<F>(&mut self,tdef:&TableDef,expr:&ScanExpr,process_record:&mut F)->Result<(),BTreeError>
+    where 
+        F: for<'a> FnMut(Record)
+    {
+        if let Ok((key1,key2,cmp1,cmp2)) = expr.createScan(&tdef)
+        {
+            let mut index:usize = 0;
+            let mut count:usize = 0;
+            let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
+            match &mut scanner {
+                Ok(cursor) =>{
+                    while cursor.Valid(){
+
+                            let mut status = expr.Offset <= index && expr.Limit >= count;
+                            let mut record: Record = Record::new(&tdef);
+                            if status == true
+                            {
+                                cursor.Deref(self,&mut record);
+    
+                                if let Some(filter) = &expr.Filter
+                                {
+                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
+                                   status = status && filterStatus;
+                                }
+                            }
+
+                            if status == true
+                            {    
+                                process_record(record);
+                                count += 1;
+                            }
+
+                            index += 1;
+                            cursor.Next();
+                        }                
+                },
+                Err(err) => { return Err(BTreeError::NextNotFound)}
+            }
+        }
+        Ok(())
+    }
+
+
     pub fn Query(&mut self, cmd:&SelectExpr)->Result<DataTable,BTreeError>
     {
         let tdef = self.getTableDef(&cmd.Scan.Table.to_vec());
@@ -238,20 +282,18 @@ impl txwriter{
 
         let tdef = tdef.unwrap();
         let mut txTable = DataTable::new(&tdef);
-
+        for i in 0..cmd.Name.len()
+        {
+            if cmd.Name[i].len() == 0
+            {
+                txTable.Cols.push(cmd.Ouput[i].to_string().as_bytes().to_vec());
+            }
+            else {
+                txTable.Cols.push(cmd.Name[i].clone());
+            }
+        }
         if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
         {
-            for i in 0..cmd.Name.len()
-            {
-                if cmd.Name[i].len() == 0
-                {
-                    txTable.Cols.push(cmd.Ouput[i].to_string().as_bytes().to_vec());
-                }
-                else {
-                    txTable.Cols.push(cmd.Name[i].clone());
-                }
-            }
-
             let mut index:usize = 0;
             let mut count:usize = 0;
             let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
@@ -259,7 +301,7 @@ impl txwriter{
                 Ok(cursor) =>{
                     while cursor.Valid(){
 
-                            let mut status = cmd.Scan.Offset <= index && cmd.Scan.Limit >= count;
+                            let mut status =  cmd.Scan.Offset <= index &&  cmd.Scan.Limit >= count;
                             let mut record: Record = Record::new(&tdef);
                             if status == true
                             {
@@ -283,8 +325,8 @@ impl txwriter{
                                         rc.Vals.push(v);
                                     }
                                 }
-                                count += 1;
                                 txTable.Rows.push(rc);
+                                count += 1;
                             }
 
                             index += 1;
@@ -299,6 +341,7 @@ impl txwriter{
         {   
             txTable.Types.push(v.GetValueType());
         }
+
         Ok(txTable)
 
     }
@@ -312,7 +355,6 @@ impl txwriter{
         false
     }
 
-
     fn executeUpdate(&mut self, cmd:&UpdateExpr)->Result<usize,BTreeError>
     {
         let tdef = self.getTableDef(&cmd.Scan.Table.to_vec());
@@ -320,40 +362,62 @@ impl txwriter{
         {
             return Err(BTreeError::TableNotFind);
         }
-
+        
         let tdef = tdef.unwrap();
+        let mut list = Vec::new();
         let mut count:usize = 0;
+
         if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
         {
-            let mut list = Vec::new();
+            let mut index:usize = 0;
+            let mut count:usize = 0;
             let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
             match &mut scanner {
                 Ok(cursor) =>{
                     while cursor.Valid(){
+
+                            let mut status =  cmd.Scan.Offset <= index &&  cmd.Scan.Limit >= count;
                             let mut record: Record = Record::new(&tdef);
-                            cursor.Deref(self,&mut record);
-                            list.push(record);
+                            if status == true
+                            {
+                                cursor.Deref(self,&mut record);
+    
+                                if let Some(filter) = &cmd.Scan.Filter
+                                {
+                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
+                                   status = status && filterStatus;
+                                }
+                            }
+
+                            if status == true
+                            {    
+                                list.push(record);
+                                count += 1;
+                            }
+
+                            index += 1;
                             cursor.Next();
                         }                
                 },
                 Err(err) => { return Err(BTreeError::NextNotFound)}
             }
-            for mut r in list
+        }
+
+        for mut r in list
+        {
+            for i in 0..cmd.Name.len()
             {
-                for i in 0..cmd.Name.len()
+                if let Ok(v) = cmd.Values[i].eval(&r)
                 {
-                    if let Ok(v) = cmd.Values[i].eval(&r)
+                    if let Err(ex) = r.Set(&cmd.Name[i], v)
                     {
-                        if let Err(ex) = r.Set(&cmd.Name[i], v)
-                        {
-                            return Err(BTreeError::EvalException);
-                        }
+                        return Err(BTreeError::EvalException);
                     }
                 }
-                if let Ok(v) = self.UpdateRecord(&mut r,MODE_UPDATE_ONLY)
-                {
-                     count += 1;
-                }
+            }
+            if let Ok(v) = self.UpdateRecord(&mut r,MODE_UPDATE_ONLY)
+            {
+                 count += 1;
             }
         }
 
@@ -371,29 +435,51 @@ impl txwriter{
 
         let tdef = tdef.unwrap();
         let mut count:usize = 0;
+
+        let mut list = Vec::new();
         if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
         {
-            let mut list = Vec::new();
+            let mut index:usize = 0;
+            let mut count:usize = 0;
             let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
             match &mut scanner {
                 Ok(cursor) =>{
                     while cursor.Valid(){
+
+                            let mut status =  cmd.Scan.Offset <= index &&  cmd.Scan.Limit >= count;
                             let mut record: Record = Record::new(&tdef);
-                            cursor.Deref(self,&mut record);
-                            list.push(record);
+                            if status == true
+                            {
+                                cursor.Deref(self,&mut record);
+    
+                                if let Some(filter) = &cmd.Scan.Filter
+                                {
+                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
+                                   status = status && filterStatus;
+                                }
+                            }
+
+                            if status == true
+                            {    
+                                list.push(record);
+                                count += 1;
+                            }
+
+                            index += 1;
                             cursor.Next();
                         }                
                 },
                 Err(err) => { return Err(BTreeError::NextNotFound)}
             }
-            for r in list
+        }
+
+        for r in list
+        {
+            if let Ok(v) = self.DeleteRecord(&r)
             {
-                if let Ok(v) = self.DeleteRecord(&r)
+                if v == true
                 {
-                    if v == true
-                    {
-                        count += 1;
-                    }
+                    count += 1;
                 }
             }
         }
