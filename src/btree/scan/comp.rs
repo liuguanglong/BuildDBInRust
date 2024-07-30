@@ -1,8 +1,7 @@
 use std::fmt;
 
 
-
-#[derive(Clone,Debug,Copy)]
+#[derive(Clone,Debug,Copy,PartialEq)]
 pub enum OP_CMP {
     CMP_GE,
     CMP_GT,

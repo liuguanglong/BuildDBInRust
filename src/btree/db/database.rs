@@ -118,8 +118,8 @@ impl<'a> DataBase<'a>{
             key2.encodeKey(key2.def.Prefix, &mut keyEnd);
         }
         else {
-            key1.encodeKeyPartial(idxNumber as usize,&mut keyStart,);
-            key2.encodeKeyPartial(idxNumber as usize,&mut keyEnd);
+            key1.encodeKeyPartial(idxNumber as usize,&mut keyStart,&cmp1);
+            key2.encodeKeyPartial(idxNumber as usize,&mut keyEnd,&cmp2);
             println!("KeyStart:{:?}  KeyEnd:{:?}",keyStart,keyEnd);
         }
 

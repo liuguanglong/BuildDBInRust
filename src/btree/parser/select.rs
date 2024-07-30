@@ -218,7 +218,7 @@ mod tests {
             r.Set("id".as_bytes(), Value::BYTES(("22").as_bytes().to_vec()));
             tx.DeleteRecord(&mut r);
 
-            let statements = "select id,name,address, age + 40 as newage, age from person index by name >= 'Bob1' and name < 'Bob5' ;";
+            let statements = "select id,name,address, age + 40 as newage, age from person index by  name < 'Bob50' and name > 'Bob4' ;";
             if let Ok((ret,sqlExprList)) = ExprSQLList().parse(&statements)
             {
                 for sql in sqlExprList

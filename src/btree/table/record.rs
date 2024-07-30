@@ -1,3 +1,4 @@
+use crate::btree::scan::comp::OP_CMP;
 use crate::btree::table::table::TableDef;
 use crate::btree::table::value::Value;
 use crate::btree::table::value::ValueType;
@@ -249,7 +250,7 @@ impl<'a> Record<'a> {
 
     // The range key can be a prefix of the index key,
     // we may have to encode missing columns to make the comparison work.
-    pub fn encodeKeyPartial(&self,idx:usize, list: &mut Vec<u8>) 
+    pub fn encodeKeyPartial(&self,idx:usize, list: &mut Vec<u8>,cmp:&OP_CMP) 
     {
         list.extend_from_slice(&self.def.IndexPrefixes[idx].to_le_bytes());
         for x in &self.def.Indexes[idx]
@@ -258,15 +259,23 @@ impl<'a> Record<'a> {
             {
                 if let Value::None = self.Vals[i]
                 {
-                    match &self.def.Types[i]
+                    // Encode the missing columns as either minimum or maximum values,
+                    // depending on the comparison operator.
+                    // 1. The empty string is lower than all possible value encodings,
+                    // thus we don't need to add anything for CMP_LT and CMP_GE.
+                    // 2. The maximum encodings are all 0xff bytes.
+                    if *cmp == OP_CMP::CMP_GT || *cmp == OP_CMP::CMP_LE
                     {
-                        ValueType::BOOL => {list.extend(&[0;1])},
-                        ValueType::INT8 => {list.extend(&[0xff])},
-                        ValueType::INT16 => {list.extend(&[0xff;2])},
-                        ValueType::INT32 => {list.extend(&[0xff;4])},
-                        ValueType::INT64 => {list.extend(&[0xff;8])},
-                        ValueType::BYTES => { list.push(0xff)},
-                        Other=> {panic!()}
+                        match &self.def.Types[i]
+                        {
+                            ValueType::BOOL => {list.extend(&[0;1])},
+                            ValueType::INT8 => {list.extend(&[0xff])},
+                            ValueType::INT16 => {list.extend(&[0xff;2])},
+                            ValueType::INT32 => {list.extend(&[0xff;4])},
+                            ValueType::INT64 => {list.extend(&[0xff;8])},
+                            ValueType::BYTES => { list.push(0xff)},
+                            Other=> {panic!()}
+                        }
                     }
                 }
                 else {
@@ -495,7 +504,7 @@ mod tests {
         rc.Set("age".as_bytes(), Value::INT16(30)).unwrap();
 
         let mut key = Vec::new();
-        rc.encodeKeyPartial(1,&mut key);
+        rc.encodeKeyPartial(1,&mut key,&OP_CMP::CMP_LE);
         println!("{:?}",key);
 
         let mut rc = Record::new(&table);

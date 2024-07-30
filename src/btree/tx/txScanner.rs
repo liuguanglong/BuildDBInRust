@@ -31,8 +31,8 @@ impl<'a> TxScanner<'a> {
            {
                 if self.Cmp2.is_some()
                 {
-                let (key,_) = self.iter.Deref();
-                return crate::btree::scan::comp::cmpOK(key, &self.keyEnd.as_ref().unwrap(), &self.Cmp2.unwrap());
+                    let (key,_) = self.iter.Deref();
+                    return crate::btree::scan::comp::cmpOK(key, &self.keyEnd.as_ref().unwrap(), &self.Cmp2.unwrap());
                 }
                 else {
                     return true;

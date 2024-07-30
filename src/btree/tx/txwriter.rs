@@ -452,10 +452,10 @@ impl txwriter{
             }
         }
         else {
-            key1.encodeKeyPartial(idxNumber as usize,&mut keyStart,);
+            key1.encodeKeyPartial(idxNumber as usize,&mut keyStart,&cmp1);
             if key2.is_some()
             {
-                key2.unwrap().encodeKeyPartial(idxNumber as usize,&mut keyEnd);
+                key2.unwrap().encodeKeyPartial(idxNumber as usize,&mut keyEnd,&cmp2.unwrap());
             }
             println!("KeyStart:{:?}  KeyEnd:{:?}",keyStart,keyEnd);
         }
