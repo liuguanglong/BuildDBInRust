@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::{Arc, RwLock}};
+use std::{collections::HashMap, fmt::Display, sync::{Arc, RwLock}};
 
-use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, parser::{delete::DeleteExpr, insert::InsertExpr, select::SelectExpr, statement::SQLExpr, update::UpdateExpr}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_INSERT_ONLY, MODE_UPDATE_ONLY, MODE_UPSERT};
+use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, parser::{delete::DeleteExpr, expr::Expr, insert::InsertExpr, select::SelectExpr, statement::SQLExpr, update::UpdateExpr}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_INSERT_ONLY, MODE_UPDATE_ONLY, MODE_UPSERT};
 
-use super::{tx::{self, Tx}, txRecord::{TxRecord, TxTable}, txScanner::{self, TxScanner}, txbiter::TxBIter, txinterface::{DBTxInterface, TxInterface, TxReadContext, TxReaderInterface, TxWriteContext}};
+use super::{tx::{self, Tx}, txRecord::{DataRow, DataTable, TxRecord, TxTable}, txScanner::{self, TxScanner}, txbiter::TxBIter, txinterface::{DBTxInterface, TxInterface, TxReadContext, TxReaderInterface, TxWriteContext}};
 
 
 pub struct txwriter{
@@ -228,7 +228,7 @@ impl txwriter{
         }
     }
 
-    pub fn Query(&mut self, cmd:&SelectExpr)->Result<(TxTable,Vec<TxRecord>),BTreeError>
+    pub fn Query(&mut self, cmd:&SelectExpr)->Result<DataTable,BTreeError>
     {
         let tdef = self.getTableDef(&cmd.Scan.Table.to_vec());
         if tdef.is_none()
@@ -237,16 +237,10 @@ impl txwriter{
         }
 
         let tdef = tdef.unwrap();
-        let mut list = Vec::new();
-        let mut txTable = TxTable{
-            Name:tdef.Name.clone(),
-            Cols:Vec::new(),
-            Types:Vec::new(),
-        };
+        let mut txTable = DataTable::new(&tdef);
 
         if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
         {
-
             for i in 0..cmd.Name.len()
             {
                 if cmd.Name[i].len() == 0
@@ -258,27 +252,42 @@ impl txwriter{
                 }
             }
 
+            let mut index:usize = 0;
+            let mut count:usize = 0;
             let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
             match &mut scanner {
                 Ok(cursor) =>{
                     while cursor.Valid(){
-                            let mut record: Record = Record::new(&tdef);
-                            cursor.Deref(self,&mut record);
 
-                            let mut rc: TxRecord = TxRecord::new();
-                            //Calc Column
-                            for i in 0..cmd.Ouput.len()
+                            let mut status = cmd.Scan.Offset <= index && cmd.Scan.Limit >= count;
+                            let mut record: Record = Record::new(&tdef);
+                            if status == true
                             {
-                                if let Ok(v) = cmd.Ouput[i].eval(&record)
+                                cursor.Deref(self,&mut record);
+    
+                                if let Some(filter) = &cmd.Scan.Filter
                                 {
-                                    if i == 0
-                                    {
-                                        txTable.Types.push(v.GetValueType());
-                                    }
-                                    rc.Vals.push(v);
+                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
+                                   status = status && filterStatus;
                                 }
                             }
-                            list.push(rc);
+
+                            if status == true
+                            {    
+                                let mut rc: DataRow = DataRow::new();
+                                //Calc Column
+                                for i in 0..cmd.Ouput.len()
+                                {
+                                    if let Ok(v) = cmd.Ouput[i].eval(&record)
+                                    {
+                                        rc.Vals.push(v);
+                                    }
+                                }
+                                count += 1;
+                                txTable.Rows.push(rc);
+                            }
+
+                            index += 1;
                             cursor.Next();
                         }                
                 },
@@ -286,9 +295,23 @@ impl txwriter{
             }
         }
 
-        Ok((txTable,list))
+        for v in &txTable.Rows.get(0).as_ref().unwrap().Vals
+        {   
+            txTable.Types.push(v.GetValueType());
+        }
+        Ok(txTable)
 
     }
+
+    fn evalFilterExpr(expr:&Expr,rc:&Record)->bool
+    {
+        if let Ok(Value::BOOL(true)) = expr.eval(&rc)
+        {
+            return true;
+        }
+        false
+    }
+
 
     fn executeUpdate(&mut self, cmd:&UpdateExpr)->Result<usize,BTreeError>
     {

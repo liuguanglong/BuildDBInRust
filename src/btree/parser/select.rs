@@ -218,25 +218,16 @@ mod tests {
             r.Set("id".as_bytes(), Value::BYTES(("22").as_bytes().to_vec()));
             tx.DeleteRecord(&mut r);
 
-            let statements = "select id,name,address, age + 40 as newage, age from person index by  name < 'Bob50' and name > 'Bob4' ;";
+            let statements = "select id,name,address, age + 40 as newage, age from person index by name < 'Bob50' and name > 'Bob4' filter id < '48' limit 6 offset 2;";
             if let Ok((ret,sqlExprList)) = ExprSQLList().parse(&statements)
             {
                 for sql in sqlExprList
                 {
                     if let SQLExpr::Select(sql) = sql
                     {
-                        if let Ok((table,rows)) = tx.Query(&sql)
+                        if let Ok(table) = tx.Query(&sql)
                         {
-                            println!("Table:{}\n",String::from_utf8(table.Name.to_vec()).unwrap());
-                            for i in 0..table.Cols.len()
-                            {
-                                print!("{}:{}|",String::from_utf8(table.Cols[i].to_vec()).unwrap(),table.Types[i]);
-                            }
-                            println!("");
-                            for r in rows
-                            {
-                                print!("{}\n",r);
-                            }
+                            println!("{}",table);
                         }
                     }
                 }
