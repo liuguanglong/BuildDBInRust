@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::{Arc, RwLock, RwLockReadGuard}};
 
-use crate::btree::{db::TDEF_TABLE, kv::{node::BNode, nodeinterface::{BNodeReadInterface, BNodeWriteInterface}}, scan::{biter::BIter, comp::OP_CMP}, table::{record::Record, table::TableDef, value::Value}, BTreeError, BTREE_PAGE_SIZE};
-use super::{txScanner::TxScanner, txbiter::TxBIter, txinterface::{DBReadInterface, TxReadContext, TxReaderInterface}, winmmap::Mmap};
+use crate::btree::{db::TDEF_TABLE, kv::{node::BNode, nodeinterface::{BNodeReadInterface, BNodeWriteInterface}}, parser::{expr::Expr, lib::Parser, select::SelectExpr, statement::{ExprSQL, ExprSQLList, SQLExpr}}, scan::{biter::BIter, comp::OP_CMP}, table::{record::Record, table::TableDef, value::Value}, BTreeError, BTREE_PAGE_SIZE};
+use super::{txRecord::{DataRow, DataTable}, txScanner::TxScanner, txbiter::TxBIter, txinterface::{DBReadInterface, TxReadContext, TxReaderInterface}, winmmap::Mmap};
 
 pub struct TxReader{
     data:Arc<RwLock<Mmap>>,
@@ -34,6 +34,113 @@ impl TxReader{
             index:index,
             tables:tables,
         }
+    }
+
+    pub fn ExecuteSQLStatments(&mut self,statements:String)->Result<Vec<DataTable>,BTreeError>
+    {
+        let mut list = Vec::new();
+        let ret = ExprSQLList().parse(&statements);
+        if let Ok((ret,sqlExprList)) = ret
+        {
+            for sql1 in sqlExprList
+            {
+                match &sql1 {
+                    SQLExpr::Select(expr) => {
+                        if let Ok(table) = self.ExecuteReader(&expr)
+                        {
+                            list.push(table);
+                        }
+                    },
+                    expr@Other => {
+                       return Err(BTreeError::BadSQLStatement);
+                    },
+                }                 
+            }
+        }
+        Ok(list)
+    }
+
+    pub fn ExecuteReader(&mut self, cmd:&SelectExpr)->Result<DataTable,BTreeError>
+    {
+        let tdef = self.getTableDef(&cmd.Scan.Table.to_vec());
+        if tdef.is_none()
+        {
+            return Err(BTreeError::TableNotFind);
+        }
+
+        let tdef = tdef.unwrap();
+        let mut txTable = DataTable::new(&tdef);
+        for i in 0..cmd.Name.len()
+        {
+            if cmd.Name[i].len() == 0
+            {
+                txTable.Cols.push(cmd.Ouput[i].to_string().as_bytes().to_vec());
+            }
+            else {
+                txTable.Cols.push(cmd.Name[i].clone());
+            }
+        }
+        if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
+        {
+            let mut index:usize = 0;
+            let mut count:usize = 0;
+            let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
+            match &mut scanner {
+                Ok(cursor) =>{
+                    while cursor.Valid(){
+
+                            let mut status =  cmd.Scan.Offset <= index &&  cmd.Scan.Limit >= count;
+                            let mut record: Record = Record::new(&tdef);
+                            if status == true
+                            {
+                                cursor.Deref(self,&mut record);
+    
+                                if let Some(filter) = &cmd.Scan.Filter
+                                {
+                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
+                                   status = status && filterStatus;
+                                }
+                            }
+
+                            if status == true
+                            {    
+                                let mut rc: DataRow = DataRow::new();
+                                //Calc Column
+                                for i in 0..cmd.Ouput.len()
+                                {
+                                    if let Ok(v) = cmd.Ouput[i].eval(&record)
+                                    {
+                                        rc.Vals.push(v);
+                                    }
+                                }
+                                txTable.Rows.push(rc);
+                                count += 1;
+                            }
+
+                            index += 1;
+                            cursor.Next();
+                        }                
+                },
+                Err(err) => { return Err(BTreeError::NextNotFound)}
+            }
+        }
+
+        for v in &txTable.Rows.get(0).as_ref().unwrap().Vals
+        {   
+            txTable.Types.push(v.GetValueType());
+        }
+
+        Ok(txTable)
+
+    }
+
+    fn evalFilterExpr(expr:&Expr,rc:&Record)->bool
+    {
+        if let Ok(Value::BOOL(true)) = expr.eval(&rc)
+        {
+            return true;
+        }
+        false
     }
 
     fn SeekRecord(&self,idxNumber:i16, cmp1: OP_CMP, cmp2: Option<OP_CMP>, key1:&Record, key2:Option<&Record>)->Result<TxScanner,BTreeError> {

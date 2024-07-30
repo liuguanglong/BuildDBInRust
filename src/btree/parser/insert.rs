@@ -305,27 +305,11 @@ mod tests {
 
         println!("sql:{}",sql);
 
-        let ret = ExprSQLList().parse(&sql);
-
-        if let Ok((ret,sqlExprList)) = ret
+        if let Ok(tables) = tx.ExecuteSQLStatments(sql)
         {
-            for sql1 in sqlExprList
+            for t in tables
             {
-                match &sql1 {
-                    SQLExpr::Select(expr) => {
-                        if let Ok(table) = tx.Query(&expr)
-                        {
-                            println!("{}",table);
-                        }
-                    },
-                    expr@Other => {
-                        if let Ok(affected) = tx.ExecuteCommand(&expr)
-                        {
-                            println!("affected: {}",affected);
-                        }
-                    },
-                }
-                 
+                println!("{}",t);
             }
         }
     }

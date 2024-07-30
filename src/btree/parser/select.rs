@@ -225,7 +225,7 @@ mod tests {
                 {
                     if let SQLExpr::Select(sql) = sql
                     {
-                        if let Ok(table) = tx.Query(&sql)
+                        if let Ok(table) = tx.ExecuteReader(&sql)
                         {
                             println!("{}",table);
                         }

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Display, sync::{Arc, RwLock}};
 
-use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, parser::{delete::DeleteExpr, expr::Expr, insert::InsertExpr, select::SelectExpr, statement::{SQLExpr, ScanExpr}, update::UpdateExpr}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_INSERT_ONLY, MODE_UPDATE_ONLY, MODE_UPSERT};
+use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, parser::{delete::DeleteExpr, expr::Expr, insert::InsertExpr, lib::Parser, select::SelectExpr, statement::{ExprSQL, ExprSQLList, SQLExpr, ScanExpr}, update::UpdateExpr}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_INSERT_ONLY, MODE_UPDATE_ONLY, MODE_UPSERT};
 
 use super::{tx::{self, Tx}, txRecord::{DataRow, DataTable, TxRecord, TxTable}, txScanner::{self, TxScanner}, txbiter::TxBIter, txinterface::{DBTxInterface, TxInterface, TxReadContext, TxReaderInterface, TxWriteContext}};
 
@@ -216,7 +216,34 @@ impl TxInterface for txwriter{
 
 impl txwriter{
 
-    pub fn ExecuteCommand(&mut self,expr:&SQLExpr)->Result<usize,BTreeError>
+    pub fn ExecuteSQLStatments(&mut self,statements:String)->Result<Vec<DataTable>,BTreeError>
+    {
+        let mut list = Vec::new();
+        let ret = ExprSQLList().parse(&statements);
+        if let Ok((ret,sqlExprList)) = ret
+        {
+            for sql1 in sqlExprList
+            {
+                match &sql1 {
+                    SQLExpr::Select(expr) => {
+                        if let Ok(table) = self.ExecuteReader(&expr)
+                        {
+                            list.push(table);
+                        }
+                    },
+                    expr@Other => {
+                        if let Ok(affected) = self.ExecuteNoQuery(&expr)
+                        {
+                            println!("affected: {}",affected);
+                        }
+                    },
+                }                 
+            }
+        }
+        Ok(list)
+    }
+
+    pub fn ExecuteNoQuery(&mut self,expr:&SQLExpr)->Result<usize,BTreeError>
     {
         match &expr {
             //SQLExpr::Select(expr) => return self.executeSelect(expr),
@@ -227,8 +254,17 @@ impl txwriter{
             _Other => panic!("Not Supported")
         }
     }
+    
+    // pub fn ExecuteReader(&mut self,sql:String)->Result<DataTable,BTreeError>
+    // {
+    //     if let Ok((_,SQLExpr::Select(expr))) = ExprSQL().parse(&sql)
+    //     {
+    //         return self.Query(&expr);
+    //     }
+    //     Err(BTreeError::BadSQLStatement)
+    // }
 
-    pub fn Query(&mut self, cmd:&SelectExpr)->Result<DataTable,BTreeError>
+    pub fn ExecuteReader(&mut self, cmd:&SelectExpr)->Result<DataTable,BTreeError>
     {
         let tdef = self.getTableDef(&cmd.Scan.Table.to_vec());
         if tdef.is_none()

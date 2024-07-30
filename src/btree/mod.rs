@@ -44,6 +44,7 @@ pub enum BTreeError{
     EvalException,
     OperationNotSupported(String),
     ParamNotFound(String),
+    BadSQLStatement,
 
 }
 
@@ -69,6 +70,7 @@ impl fmt::Display for BTreeError {
             BTreeError::EvalException => write!(f,"Exception occured when trying to eval expr!"),
             BTreeError::OperationNotSupported(v) => write!(f, "Operation is not supported! :{}", v),
             BTreeError::ParamNotFound(v) => write!(f, "Param is not found! :{}", v),
+            BTreeError::BadSQLStatement => write!(f, "Exception occured when trying to parse SQL Statement!"),
         }
     }
 }
