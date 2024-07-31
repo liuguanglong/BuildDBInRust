@@ -209,7 +209,7 @@ mod tests {
             }    
         }
         db.commitTx(&mut tx);
-        
+
     }
 
     #[test]
@@ -286,7 +286,6 @@ mod tests {
         insert into person
         ( id, name, address, age, married )
         values
-
         "#;
         sql.push_str(&insert);
         sql.push_str(format!("('{}','Bob{}','Montrel Canada H9T 1R5',20,false),", i,i).as_str());

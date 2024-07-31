@@ -255,14 +255,49 @@ impl txwriter{
         }
     }
     
-    // pub fn ExecuteReader(&mut self,sql:String)->Result<DataTable,BTreeError>
-    // {
-    //     if let Ok((_,SQLExpr::Select(expr))) = ExprSQL().parse(&sql)
-    //     {
-    //         return self.Query(&expr);
-    //     }
-    //     Err(BTreeError::BadSQLStatement)
-    // }
+    fn search<F>(&self,tdef:&TableDef,expr:&ScanExpr,mut fnProcess :F)->Result<(), BTreeError>
+    where 
+        F: FnMut(DataRow)
+    {
+        if let Ok((key1,key2,cmp1,cmp2)) = expr.createScan(&tdef)
+        {
+            let mut index:usize = 0;
+            let mut count:usize = 0;
+            let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
+            match &mut scanner {
+                Ok(cursor) =>{
+                    while cursor.Valid(){
+
+                            let mut status =  expr.Offset <= index &&  expr.Limit >= count;
+                            let mut record: Record = Record::new(&tdef);
+                            if status == true
+                            {
+                                cursor.Deref(self,&mut record);    
+                                if let Some(filter) = &expr.Filter
+                                {
+                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
+                                   status = status && filterStatus;
+                                }
+                            }
+
+                            if status == true
+                            {   
+                                let mut rc: DataRow = DataRow::new();
+                                rc.Vals = record.Vals;
+                                fnProcess(rc);
+                                count += 1;
+                            }
+
+                            index += 1;
+                            cursor.Next();
+                        }                
+                },
+                Err(err) => { return Err(BTreeError::NextNotFound)}
+            }
+        }
+        Ok(())
+
+    }
 
     pub fn ExecuteReader(&mut self, cmd:&SelectExpr)->Result<DataTable,BTreeError>
     {
@@ -284,50 +319,12 @@ impl txwriter{
                 txTable.Cols.push(cmd.Name[i].clone());
             }
         }
-        if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
-        {
-            let mut index:usize = 0;
-            let mut count:usize = 0;
-            let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
-            match &mut scanner {
-                Ok(cursor) =>{
-                    while cursor.Valid(){
 
-                            let mut status =  cmd.Scan.Offset <= index &&  cmd.Scan.Limit >= count;
-                            let mut record: Record = Record::new(&tdef);
-                            if status == true
-                            {
-                                cursor.Deref(self,&mut record);
-    
-                                if let Some(filter) = &cmd.Scan.Filter
-                                {
-                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
-                                   status = status && filterStatus;
-                                }
-                            }
+        let fnProcessRecord = |r| {
+            txTable.Rows.push(r);
+        };
 
-                            if status == true
-                            {    
-                                let mut rc: DataRow = DataRow::new();
-                                //Calc Column
-                                for i in 0..cmd.Ouput.len()
-                                {
-                                    if let Ok(v) = cmd.Ouput[i].eval(&record)
-                                    {
-                                        rc.Vals.push(v);
-                                    }
-                                }
-                                txTable.Rows.push(rc);
-                                count += 1;
-                            }
-
-                            index += 1;
-                            cursor.Next();
-                        }                
-                },
-                Err(err) => { return Err(BTreeError::NextNotFound)}
-            }
-        }
+        self.search(&tdef, &cmd.Scan, fnProcessRecord);
 
         for v in &txTable.Rows.get(0).as_ref().unwrap().Vals
         {   
@@ -359,41 +356,13 @@ impl txwriter{
         let mut list = Vec::new();
         let mut count:usize = 0;
 
-        if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
-        {
-            let mut index:usize = 0;
-            let mut count:usize = 0;
-            let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
-            match &mut scanner {
-                Ok(cursor) =>{
-                    while cursor.Valid(){
+        let fnProcessRecord = |r:DataRow| {
+            let mut rc = Record::new(&tdef);
+            rc.Vals = r.Vals;
+            list.push(rc);
+        };
 
-                            let mut status =  cmd.Scan.Offset <= index &&  cmd.Scan.Limit >= count;
-                            let mut record: Record = Record::new(&tdef);
-                            if status == true
-                            {
-                                cursor.Deref(self,&mut record);
-    
-                                if let Some(filter) = &cmd.Scan.Filter
-                                {
-                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
-                                   status = status && filterStatus;
-                                }
-                            }
-
-                            if status == true
-                            {    
-                                list.push(record);
-                                count += 1;
-                            }
-
-                            index += 1;
-                            cursor.Next();
-                        }                
-                },
-                Err(err) => { return Err(BTreeError::NextNotFound)}
-            }
-        }
+        self.search(&tdef, &cmd.Scan, fnProcessRecord);
 
         for mut r in list
         {
@@ -429,41 +398,13 @@ impl txwriter{
         let mut count:usize = 0;
 
         let mut list = Vec::new();
-        if let Ok((key1,key2,cmp1,cmp2)) = cmd.Scan.createScan(&tdef)
-        {
-            let mut index:usize = 0;
-            let mut count:usize = 0;
-            let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
-            match &mut scanner {
-                Ok(cursor) =>{
-                    while cursor.Valid(){
+        let fnProcessRecord = |r:DataRow| {
+            let mut rc = Record::new(&tdef);
+            rc.Vals = r.Vals;
+            list.push(rc);
+        };
 
-                            let mut status =  cmd.Scan.Offset <= index &&  cmd.Scan.Limit >= count;
-                            let mut record: Record = Record::new(&tdef);
-                            if status == true
-                            {
-                                cursor.Deref(self,&mut record);
-    
-                                if let Some(filter) = &cmd.Scan.Filter
-                                {
-                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
-                                   status = status && filterStatus;
-                                }
-                            }
-
-                            if status == true
-                            {    
-                                list.push(record);
-                                count += 1;
-                            }
-
-                            index += 1;
-                            cursor.Next();
-                        }                
-                },
-                Err(err) => { return Err(BTreeError::NextNotFound)}
-            }
-        }
+        self.search(&tdef, &cmd.Scan, fnProcessRecord);
 
         for r in list
         {
