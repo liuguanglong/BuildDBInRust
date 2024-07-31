@@ -8,7 +8,7 @@ use crate::btree::table::table::TableDef;
 use crate::btree::{table, BTreeError};
 
 use super::tx::Tx;
-use super::txdemo::Shared;
+use super::shared::Shared;
 use super::txinterface::{TxContent};
 use super::txreader::TxReader;
 use super::txwriter::txwriter;

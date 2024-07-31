@@ -4,14 +4,12 @@ use scopeguard::defer;
 
 use crate::btree::{db::{TDEF_META, TDEF_TABLE}, kv::{node::BNode, ContextError}, table::table::TableDef, tx::txwriter::txwriter};
 
-use super::{dbcontext::{self, DbContext}, txdemo::Shared, txinterface::{MmapInterface, TxContent}};
-
-
+use super::{dbcontext::{self, DbContext}, shared::Shared, txinterface::{MmapInterface, TxContent}};
 
 pub struct Database{
     context:DbContext,
     tables: Arc<RwLock<HashMap<Vec<u8>,TableDef>>>,
-    writer:Shared<()>,
+    pub writer:Shared<()>,
     reader:Shared<()>,
     readers: HashMap<usize,u64>,
 }
@@ -131,7 +129,7 @@ mod tests {
     use std::{fmt::Write, sync::{Arc, Mutex, RwLock}, thread, time::Duration};
     use rand::Rng;
 
-    use crate::btree::{db::{TDEF_META, TDEF_TABLE}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueType}}, tx::{memoryContext::memoryContext, txdemo::Shared, txinterface::{DBReadInterface, DBTxInterface, TxReadContext}, txwriter::txwriter, winmmap::Mmap}, BTREE_PAGE_SIZE, MODE_UPSERT};
+    use crate::btree::{db::{TDEF_META, TDEF_TABLE}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueType}}, tx::{memoryContext::memoryContext,  shared::Shared, txinterface::{DBReadInterface, DBTxInterface, TxReadContext}, txwriter::txwriter, winmmap::Mmap}, BTREE_PAGE_SIZE, MODE_UPSERT};
     use super::*;
     use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL}};
 

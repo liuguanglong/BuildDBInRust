@@ -1115,7 +1115,7 @@ impl txwriter{
 mod tests {
 
     use std::sync::{Arc, RwLock};
-    use crate::btree::{table::value::ValueType, tx::{txdemo::Shared, winmmap::Mmap}, BTREE_PAGE_SIZE};
+    use crate::btree::{table::value::ValueType, tx::{ shared::Shared, winmmap::Mmap}, BTREE_PAGE_SIZE};
     use super::*;
 
     #[test]

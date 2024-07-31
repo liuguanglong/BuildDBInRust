@@ -60,7 +60,7 @@ mod tests {
 
     use std::{borrow::BorrowMut, hash::Hash, sync::{Arc, RwLock}, time::Duration};
     use rand::Rng;
-    use crate::btree::{kv::nodeinterface::BNodeReadInterface, tx::{tx::Tx, txdemo::Shared}, BNODE_NODE};
+    use crate::btree::{kv::nodeinterface::BNodeReadInterface, tx::{tx::Tx,  shared::Shared}, BNODE_NODE};
 
     use super::*;
     use std::thread;

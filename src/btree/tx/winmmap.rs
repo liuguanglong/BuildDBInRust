@@ -24,7 +24,7 @@ use winapi::um::winnt::{ FILE_ATTRIBUTE_NORMAL, GENERIC_READ, GENERIC_WRITE, MEM
 use winapi::um::fileapi::{CREATE_NEW, OPEN_EXISTING,OPEN_ALWAYS};
 
 use super::tx::Tx;
-use super::txdemo::Shared;
+use super:: shared::Shared;
 use super::txinterface::MmapInterface;
 use super::txreader::TxReader;
 use super::txwriter::txwriter;

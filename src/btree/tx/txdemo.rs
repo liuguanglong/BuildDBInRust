@@ -1,5 +1,7 @@
 use std::{collections::HashMap, ops::{Deref, DerefMut}, sync::{Arc, Mutex, RwLock}};
 
+use super::shared::Shared;
+
 
 pub trait KVReaderInterface {
     fn Get(&self,key:&[u8])->Option<Vec<u8>>;
@@ -149,44 +151,14 @@ impl KVContext {
     }
 }
 
-#[derive(Debug)]
-pub struct Shared<T> {
-    inner: Arc<Mutex<T>>,
-}
-
-impl<T> Shared<T> {
-    pub fn new(data: T) -> Self {
-        Shared {
-            inner: Arc::new(Mutex::new(data)),
-        }
-    }
-
-    pub fn clone(&self) -> Self {
-        Shared {
-            inner: Arc::clone(&self.inner),
-        }
-    }
-}
-
-impl<T> Deref for Shared<T> {
-    type Target = Mutex<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<T> DerefMut for Shared<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        Arc::get_mut(&mut self.inner).expect("Multiple strong references exist")
-    }
-}
 
 
 #[cfg(test)]
 mod tests {
     use std::{borrow::BorrowMut, hash::Hash, sync::Arc, time::Duration};
     use rand::Rng;
+    use crate::btree::tx::shared::Shared;
+
     use super::*;
     use std::thread;
 

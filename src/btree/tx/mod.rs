@@ -13,3 +13,5 @@ pub mod dbcontext;
 pub mod memoryContext;
 pub mod database;
 pub mod txRecord; 
+pub mod dbinstance;
+mod shared;
