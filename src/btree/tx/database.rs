@@ -129,7 +129,7 @@ mod tests {
     use std::{fmt::Write, sync::{Arc, Mutex, RwLock}, thread, time::Duration};
     use rand::Rng;
 
-    use crate::btree::{db::{TDEF_META, TDEF_TABLE}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueType}}, tx::{memoryContext::memoryContext,  shared::Shared, txinterface::{DBReadInterface, DBTxInterface, TxReadContext}, txwriter::txwriter, winmmap::Mmap}, BTREE_PAGE_SIZE, MODE_UPSERT};
+    use crate::btree::{db::{TDEF_META, TDEF_TABLE}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueType}}, tx::{dbinstance::DBInstance, memoryContext::memoryContext, shared::Shared, txinterface::{DBReadInterface, DBTxInterface, TxReadContext}, txwriter::txwriter, winmmap::Mmap}, BTREE_PAGE_SIZE, MODE_UPSERT};
     use super::*;
     use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL}};
 
@@ -138,12 +138,9 @@ mod tests {
     {
         let mut mctx = Arc::new(RwLock::new(memoryContext::new(BTREE_PAGE_SIZE,1000)));
         let mut context = DbContext::new(mctx.clone());
-        let mut db = Arc::new(Mutex::new(Database::new(context).unwrap()));
+        let db = DBInstance::new(Database::new(context).unwrap());
 
-        let mut db1 = db.clone();
-        let mut dbinstance =  db1.lock().unwrap();
-        let mut tx = dbinstance.begin().unwrap();
-        drop(dbinstance);
+        let mut tx = db.beginTx().unwrap();
 
         let mut table = TableDef{
             Prefix:0,
@@ -160,14 +157,9 @@ mod tests {
         {
             println!("Error when add table:{}",ret);
         }
+        db.commitTx(&mut tx);
 
-        let mut dbinstance =  db.lock().unwrap();
-        dbinstance.commmit(&mut tx);
-        drop(dbinstance);
-
-        let mut dbinstance =  db.lock().unwrap();
-        let mut tx  = dbinstance.begin().unwrap();        
-        drop(dbinstance);   
+        let mut tx  = db.beginTx().unwrap();        
         let ret = tx.getTableDef("person".as_bytes());
         if let Some(tdef) = ret
         {
@@ -216,6 +208,8 @@ mod tests {
                 
             }    
         }
+        db.commitTx(&mut tx);
+        
     }
 
     #[test]
@@ -223,7 +217,7 @@ mod tests {
     {
         let mut mctx = Arc::new(RwLock::new(memoryContext::new(BTREE_PAGE_SIZE,1000)));
         let mut context = DbContext::new(mctx.clone());
-        let db = Shared::new(Database::new(context).unwrap());
+        let db = DBInstance::new(Database::new(context).unwrap());
 
         let createTable = r#"
         create table person
@@ -240,21 +234,17 @@ mod tests {
        "#;
 
         let mut db1 = db.clone();
-        let mut dbinstance =  db1.lock().unwrap();
-        let mut tx = dbinstance.begin().unwrap();
+
+        let mut tx = db1.beginTx().unwrap();
         let ret = tx.ExecuteSQLStatments(createTable.to_string());
-        //let ret = tx.AddTable(&mut table);
         if let Err(ret) = ret
         {
             println!("Error when add table:{}",ret);
         }
-        dbinstance.commmit(&mut tx);
-        drop(dbinstance);        
+        db1.commitTx(&mut tx);
 
         let mut handles = vec![];
-
         for i in 1..10 {
-            //let reader = context.beginread();
             let ct =  db.clone();
             let handle = thread::spawn(move || {
                 write(i, ct)
@@ -264,7 +254,6 @@ mod tests {
 
         thread::sleep(Duration::from_millis(10));
         for i in 1..10 {
-            //let reader = context.beginread();
             let instance =  db.clone();
             let handle = thread::spawn(move || {
                 read(i, instance)
@@ -278,23 +267,19 @@ mod tests {
 
     }
 
-    fn write(i:u64,db:Shared<Database>)
+    fn write(i:u64,db:DBInstance)
     {
         let mut rng = rand::thread_rng();
         let random_number: u64 = rng.gen_range(2..10);
         thread::sleep(Duration::from_millis(random_number));
 
         //Try to get write lock,stay until get lock
-        let mut dbinstance =  db.lock().unwrap();
-        let mut writer = dbinstance.writer.clone();
-        drop(dbinstance);
-        let lockWriter = writer.lock().unwrap();
+        let mut writer = db.getLocker();
+        let lock = writer.lock().unwrap();
 
         println!("Begin Set Value:{}-{}",i,i);        
         //begin tx 
-        let mut dbinstance =  db.lock().unwrap();
-        let mut tx = dbinstance.begin().unwrap();
-        drop(dbinstance);
+        let mut tx = db.beginTx().unwrap();
 
         let mut sql:String = String::new();
         let insert = r#"
@@ -311,25 +296,18 @@ mod tests {
         let ret = tx.ExecuteSQLStatments(sql);
         //println!("root :{}",tx.context.get_root());
         //commit tx
-        let mut dbinstance =  db.lock().unwrap();
-        dbinstance.commmit(&mut tx);
-        drop(dbinstance);
-
+        db.commitTx(&mut tx);
         //drop writelock
-        drop(lockWriter);
+        drop(lock);
         println!("End Set Value:{}-{}",i,i);        
     }
 
 
-    fn read(i:u64,db:Shared<Database>)
+    fn read(i:u64,db:DBInstance)
     {
         let mut rng = rand::thread_rng();
         let random_number: u64 = rng.gen_range(10..20);
-        //thread::sleep(Duration::from_millis(random_number));
-        
-        let mut dbinstance =  db.lock().unwrap();
-        let mut reader = dbinstance.beginread().unwrap();
-        drop(dbinstance);
+        let mut reader = db.beginRead().unwrap();
 
         println!("Begin Read:{}",i);        
         let statements = format!("select id,name,address, age from person index by id = '{}';",i);
@@ -341,10 +319,7 @@ mod tests {
             }
         }
         println!("End Read:{}",i);        
-
-        let mut dbinstance =  db.lock().unwrap();
-        dbinstance.endread(&reader);
-        drop(dbinstance);
+        db.endRead(&mut reader);
     }
 
 }

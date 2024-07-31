@@ -65,12 +65,6 @@ impl DBInstance {
         drop(dbinstance);
         writer
     }
-
-    pub fn releaseLocker(&self,lock:&Shared<()>)
-    {
-        drop(lock)
-    }
-
 }
 
 impl Deref for DBInstance {
