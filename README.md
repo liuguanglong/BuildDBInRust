@@ -68,9 +68,6 @@ fn write(i:u64,db:DBInstance)
         println!("Begin Set Value:{}-{}",i,i);        
         //begin tx 
         let mut tx = db.beginTx().unwrap();
-
-        let mut sql:String = String::new();
-
         let insert = format!(
             r#"
             insert into person
