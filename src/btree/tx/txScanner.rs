@@ -17,6 +17,11 @@ impl<'a> Iterator for TxScanner<'a>{
     type Item = DataRow;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.Valid() == false
+        {
+            return None;
+        }
+
         self.Next();
 
         if self.Valid()
@@ -103,7 +108,7 @@ impl<'a> TxScanner<'a> {
    }
 
    pub fn Next(&mut self) {
-       assert!(self.Valid());
+       //assert!(self.Valid());
        if self.Cmp1.value() > 0 {
            _ = self.ininter.Next();
        } else {

@@ -105,10 +105,9 @@ fn write(i:u64,db:DBInstance)
         let statements = format!("select id,name,address, age from person index by id = '{}';",i);
         if let Ok(list) = reader.ExecuteSQLStatments(statements)
         {
-            for table in list
-            {
-                println!("{}",table);
-            }
+            list.iter().for_each(
+                |table| { println!("{}",table);}
+            );
         }
         println!("End Read:{}",i);        
         db.endRead(&mut reader);
