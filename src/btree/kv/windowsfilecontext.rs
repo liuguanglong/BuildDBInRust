@@ -218,7 +218,7 @@ impl KVContextInterface for  WindowsFileContext {
             self.nappend += 1;
         }
 
-        let newNode = node.copy();
+        let newNode = node.clone();
         self.updates.insert(ptr, Some(newNode));
         return ptr;
     }
@@ -229,7 +229,7 @@ impl KVContextInterface for  WindowsFileContext {
         match node
         {
             Some(Some(x)) => {
-                Some(x.copy())    
+                Some(x.clone())    
             },
             Some(None) =>{
                 None
@@ -376,12 +376,12 @@ impl WindowsFileContext {
 
     pub fn useNode(&mut self, ptr: u64, bnode: &BNode) {
 
-        let newNode = bnode.copy();
+        let newNode = bnode.clone();
         self.updates.insert(ptr, Some(newNode));
     }
 
     pub fn appendNode(&mut self, bnode: &BNode)-> u64 {
-        let newNode = bnode.copy();
+        let newNode = bnode.clone();
 
         let ptr = self.pageflushed + self.nappend as u64;
         self.nappend += 1;
@@ -456,28 +456,6 @@ impl WindowsFileContext {
         let ret = self.syncFile(); 
         ret
     }
-
-    // fn set(&mut self,content:&[u8]){
-    //     unsafe{
-    //         let buffer = self.lpBaseAddress as *mut u8;
-    //         for i  in 0..content.len()
-    //         {
-    //             *buffer.add(i) = content[i];
-    //         }
-    //     }
-    // }
-
-    // fn get(&self,begin:usize,end:usize) -> Vec<u8> {
-    //     let mut ret:Vec<u8> = Vec::new();
-    //     unsafe {
-    //         for i in begin..end
-    //         {
-    //             let buffer = self.lpBaseAddress as *mut u8;
-    //             ret.push(*buffer.add(i))
-    //         }
-    //     }
-    //     return ret;
-    // }
 
     // the master page format.
     // it contains the pointer to the root and other important bits.

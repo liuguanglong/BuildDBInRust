@@ -4,7 +4,6 @@ use crate::btree::kv::contextinterface::KVContextInterface;
 use crate::btree::kv::node::BNode;
 
 use std::collections::HashMap;
-use crate::btree::kv::noderef::BNodeRef;
 
 use super::ContextError;
 
@@ -38,7 +37,7 @@ impl KVContextInterface for MemoryContext {
         match node
         {
             Some(x) => {
-                Some(x.copy())    
+                Some(x.clone())    
             },
             None =>  None,
         }

@@ -3,7 +3,7 @@ use crate::btree::table::table::TableDef;
 use crate::btree::table::value::Value;
 use crate::btree::table::value::ValueType;
 use std::fmt;
-use std::error::Error;
+use std::panic;
 use crate::btree::BTreeError;
 
 //Record Table Row
@@ -42,57 +42,44 @@ impl<'a> Record<'a> {
         }
     }
 
-    fn ConvertI64(v:i64,t:&ValueType)->Result<Value,BTreeError>
-    {
-        match t {
-            ValueType::INT8 => match i8::try_from(v) {
-                                    Ok(num) => Ok(Value::INT8(num)),
-                                    Err(_) =>  Err(BTreeError::ValueTypeWrong("".to_string())),
-                                },
-            ValueType::INT16 => match i16::try_from(v) {
-                                    Ok(num) => Ok(Value::INT16(num)),
-                                    Err(_) =>  Err(BTreeError::ValueTypeWrong("".to_string())),
-                                },
-            ValueType::INT32 => match i32::try_from(v) {
-                                        Ok(num) => Ok(Value::INT32(num)),
-                                        Err(_) =>  Err(BTreeError::ValueTypeWrong("".to_string())),
-                                    },
-            _Other=>  Err(BTreeError::ValueTypeWrong("".to_string())) ,
-        }
-    }
-
     pub fn Set(&mut self, key: &[u8], val: Value) -> Result<(),BTreeError>{
         let idx = self.GetColumnIndex(key);
-        match idx 
+        if let Some(i) = idx
         {
-            Some(i) => {
-                if val.MatchValueType(&self.def.Types[i]) == true
-                {
-                    if let Value::INT64(v) = val 
-                    {
-                        if self.def.Types[i] == ValueType::INT8 || self.def.Types[i] == ValueType::INT16 || self.def.Types[i] == ValueType::INT32
-                        {
-                            if let Ok(v) = Self::ConvertI64(v,&self.def.Types[i])
-                            {
-                                self.Vals[i] = v;
-                            }
-                            else {
-                                return Err(BTreeError::ValueTypeWrong(std::str::from_utf8(key).unwrap().to_string()));
-                            }
-                        }
-                    }
-                    else {
-                        self.Vals[i] = val;
-                    }
-                    Ok(())
-                }
-                else {
-                    Err(BTreeError::ValueTypeWrong(std::str::from_utf8(key).unwrap().to_string()))                    
-                }
-            },
-            None=>{ 
-                Err(BTreeError::ColumnNotFound(std::str::from_utf8(key).unwrap().to_string()))
-            }
+            match (&self.def.Types[i],val)
+            {
+                (ValueType::BYTES, val@Value::BYTES(_)) => self.Vals[i] = val,
+                (ValueType::BYTES, val@Value::None) =>  self.Vals[i] = val,
+                (ValueType::INT64, val@Value::INT64(_)) =>  self.Vals[i] = val,
+                (ValueType::INT64, Value::INT32(v)) => self.Vals[i] = Value::INT64(v as i64),
+                (ValueType::INT64, Value::INT16(v)) => self.Vals[i] = Value::INT64(v as i64),
+                (ValueType::INT64, Value::INT8(v)) => self.Vals[i] = Value::INT64(v as i64),
+                (ValueType::INT64, val@Value::None) =>  self.Vals[i] = val,
+                (ValueType::INT32, Value::INT64(v)) => self.Vals[i] = Value::INT32(i32::try_from(v).unwrap_or_default()),
+                (ValueType::INT32, val@Value::INT32(_)) =>  self.Vals[i] = val,
+                (ValueType::INT32, Value::INT16(v)) => self.Vals[i] = Value::INT32(i32::try_from(v).unwrap_or_default()),
+                (ValueType::INT32, Value::INT8(v)) => self.Vals[i] = Value::INT32(i32::try_from(v).unwrap_or_default()),
+                (ValueType::INT32, val@Value::None) =>  self.Vals[i] = val,
+                (ValueType::INT16, Value::INT64(v)) => self.Vals[i] = Value::INT16(i16::try_from(v).unwrap_or_default()),
+                (ValueType::INT16, Value::INT32(v)) => self.Vals[i] = Value::INT16(i16::try_from(v).unwrap_or_default()),
+                (ValueType::INT16, val@Value::INT16(_)) =>  self.Vals[i] = val,
+                (ValueType::INT16, Value::INT8(v)) => self.Vals[i] = Value::INT16(i16::try_from(v).unwrap_or_default()),
+                (ValueType::INT16, val@Value::None) =>  self.Vals[i] = val,
+                (ValueType::INT8, Value::INT64(v)) => self.Vals[i] = Value::INT8(i8::try_from(v).unwrap_or_default()),
+                (ValueType::INT8, Value::INT32(v)) => self.Vals[i] = Value::INT8(i8::try_from(v).unwrap_or_default()),
+                (ValueType::INT8, Value::INT16(v)) => self.Vals[i] = Value::INT8(i8::try_from(v).unwrap_or_default()),
+                (ValueType::INT8, val@Value::INT8(_)) =>  self.Vals[i] = val,
+                (ValueType::INT8, val@Value::None) =>  self.Vals[i] = val,
+                (ValueType::ID, val@Value::ID(_)) =>  self.Vals[i] = val,
+                (ValueType::ID, val@Value::None) =>  self.Vals[i] = val,
+                (ValueType::BOOL, val@Value::BOOL(_)) =>  self.Vals[i] = val,
+                (ValueType::BOOL, val@Value::None) =>  self.Vals[i] = val,
+                _Other => return Err(BTreeError::ValueTypeWrong(std::str::from_utf8(key).unwrap().to_string()))     
+            };
+            Ok(())
+        }
+        else {
+            Err(BTreeError::ColumnNotFound(std::str::from_utf8(key).unwrap().to_string()))
         }
     }
 

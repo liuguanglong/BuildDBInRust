@@ -4,7 +4,6 @@ pub mod node;
 pub mod memorycontext;
 pub mod windowsfilecontext;
 pub mod nodeinterface;
-pub mod noderef;
 pub mod contextinterface;
 
 #[derive(Debug)]
@@ -25,7 +24,6 @@ pub enum ContextError{
     CreateReaderError,
 }
 
-// 实现 fmt::Display 特征
 impl fmt::Display for ContextError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -50,4 +48,4 @@ pub const BNODE_FREE_LIST: u16 = 3;
 pub const FREE_LIST_HEADER: usize = 4 + 8 + 8;
 pub const FREE_LIST_CAP: usize = (BTREE_PAGE_SIZE - FREE_LIST_HEADER) / 8;
 pub const FREE_LIST_CAP_WITH_VERSION: usize = (BTREE_PAGE_SIZE - FREE_LIST_HEADER) / 16;
-pub const DB_SIG:&[u8] = "BuildYourOwnDB22".as_bytes();
+pub const DB_SIG:&[u8] = "BuildYourOwnDB24".as_bytes();

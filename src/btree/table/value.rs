@@ -1,3 +1,4 @@
+use core::panic;
 use std::{cmp::Ordering, fmt};
 use serde::{Serialize, Deserialize};
 
@@ -17,6 +18,21 @@ pub enum ValueType {
     INT8,
     ID,
     BOOL
+}
+
+impl From<&str> for ValueType {
+    fn from(item: &str) -> Self {
+        match item{
+            "BYTES" => ValueType::BYTES,
+            "INT64" => ValueType::INT64,
+            "INT32" => ValueType::INT32,
+            "INT16" => ValueType::INT16,
+            "INT8" => ValueType::INT8,
+            "ID" => ValueType::ID,
+            "BOOL" => ValueType::BOOL,
+            _Other => panic!("Not Support!"),
+        }
+    }
 }
 
 impl fmt::Display for ValueType {
@@ -233,87 +249,8 @@ impl Value{
             _Other => Err(BTreeError::OperationNotSupported(String::from("Compare"))),
         }
     }
-    pub fn MatchValueType(&self,t:&ValueType) -> bool
-    {
-        match self {
-            Value::BOOL(_) =>
-            {
-                if ValueType::BOOL == *t
-                {
-                    return true;
-                }
-                else {
-                    
-                    return false;
-                }
-            } ,
-            Value::INT8 (_) =>  {
-                if ValueType::INT8 == *t 
-                {
-                    return true;
-                }
-                else {
-                    
-                    return false;
-                }
-            } ,
-            Value::INT16 (_) => {
-                if ValueType::INT16 == *t 
-                {
-                    return true;
-                }
-                else {
-                    
-                    return false;
-                }
-            } ,
-            Value::INT32 (_) =>  {
-                if ValueType::INT32 == *t 
-                {
-                    return true;
-                }
-                else {
-                    
-                    return false;
-                }
-            } ,
-            Value::INT64 (_) =>  {
-                if ValueType::INT8 == *t || ValueType::INT16 == *t || ValueType::INT32 == *t || ValueType::INT64 == *t 
-                {
-                    return true;
-                }
-                else {
-                    
-                    return false;
-                }
-            } ,
-            Value::BYTES (_) =>  {
-                if ValueType::BYTES == *t
-                {
-                    return true;
-                }
-                else {
-                    
-                    return false;
-                }
-            },
-            Value::ID (_) =>  {
-                if ValueType::ID == *t
-                {
-                    return true;
-                }
-                else {
-                    
-                    return false;
-                }
-            },
-            Value::None =>  {
-                return true;
-            }
-        }
-    }
-
 }
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

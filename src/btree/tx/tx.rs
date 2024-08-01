@@ -24,7 +24,7 @@ impl TxReadContext for Tx{
         match &node
         {
             Some(Some(x)) => {
-                Some(x.copy())    
+                Some(x.clone())    
             },
             Some(None) =>{
                 None
@@ -214,7 +214,7 @@ impl Tx{
             self.nappend += 1;
         }
 
-        let newNode = node.copy();
+        let newNode = node.clone();
         self.freelist.updates.insert(ptr, Some(newNode));
 
         ptr
@@ -232,7 +232,7 @@ impl Tx{
     }
 
     pub fn appendNode(&mut self, bnode: &BNode)-> u64 {
-        let newNode = bnode.copy();
+        let newNode = bnode.clone();
 
         let ptr = self.pageflushed + self.nappend as u64;
         self.nappend += 1;
@@ -244,7 +244,7 @@ impl Tx{
 
     pub fn useNode(&mut self, ptr: u64, bnode: &BNode) {
 
-        let newNode = bnode.copy();
+        let newNode = bnode.clone();
         self.freelist.updates.insert(ptr, Some(newNode));
     }
 

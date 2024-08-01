@@ -15,18 +15,20 @@ pub struct BNode {
     size: usize,
 }
 
+impl Clone for BNode {
+    fn clone(&self) -> BNode {
+        BNode {
+            data: self.data.clone(), 
+            size:self.size,       
+        }
+    }
+}
+
 impl BNode{
     pub fn new(size:usize) -> Self {
         BNode {
             data: vec![0; size].into_boxed_slice(),
             size:size,
-        }
-    }
-
-    pub fn copy(&self) ->Self{
-        BNode{
-            data:self.data.clone(),
-            size:self.size,
         }
     }
 }
