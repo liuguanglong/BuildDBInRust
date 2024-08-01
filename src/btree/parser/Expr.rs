@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::btree::{scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueError, ValueType}}, BTreeError};
+use crate::btree::{scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueError, ValueType}}, tx::txRecord::DataRow, BTreeError};
 
 use super::lib::*;
 
@@ -78,22 +78,25 @@ impl Expr{
         }
     }
 
-    pub fn eval(&self,rc:&Record)->Result<Value,BTreeError>
+    pub fn eval(&self,tdef:&TableDef,row:&Vec<Value>)->Result<Value,BTreeError>
     {
-        Self::evalNode(self,rc)
+        Self::evalNode(self,tdef,&row)
     }
 
-    fn evalNode(node:&Expr,rc:&Record)->Result<Value,BTreeError>
+    fn evalNode(node:&Expr,tdef:&TableDef,row:&Vec<Value>)->Result<Value,BTreeError>
     {
         if node.val.is_some(){
             if let Value::ID(id) = node.val.as_ref().unwrap()
             {
-                if let Some(v) =  rc.Get(id)
+                if let Some(idx) = tdef.GetColumnIndex(id)
                 {
-                    return Ok(v);
-                }
-                else {
-                    return Err(BTreeError::EvalException);
+                    if idx < row.len()
+                    {
+                        return Ok(row[idx].clone());
+                    }
+                    else {
+                        return Err(BTreeError::EvalException);
+                    }
                 }
             }
             else {
@@ -109,7 +112,7 @@ impl Expr{
         }
         else 
         {
-            if let Ok(v) = Self::evalNode(&leftNode,rc)
+            if let Ok(v) = Self::evalNode(&leftNode,tdef,row)
             {
                 left = v;
             }
@@ -120,7 +123,7 @@ impl Expr{
 
         if node.right.as_ref().is_none()
         {
-            return Self::EvalUnaryExpr(&node.op,&left,rc);
+            return Self::EvalUnaryExpr(&node.op,tdef,&left,row);
         }
 
         let mut right = Value::None;
@@ -131,7 +134,7 @@ impl Expr{
         }
         else 
         {
-            if let Ok(v) = Self::evalNode(rightNode,rc)
+            if let Ok(v) = Self::evalNode(rightNode,tdef,row)
             {
                 right = v;
             }
@@ -140,7 +143,7 @@ impl Expr{
             }
         }
 
-        if let Ok(v) = Self::EvalBinaryExpr(&node.op,&left,&right,rc)
+        if let Ok(v) = Self::EvalBinaryExpr(&node.op,tdef,&left,&right,row)
         {
             return Ok(v);
         }
@@ -156,14 +159,20 @@ impl Expr{
         rc.Get(&id)
     }
 
-    fn EvalBinaryExpr(op:&ExpressionType,leftValue:&Value,rightValue:&Value,rc:&Record)->Result<Value,BTreeError>
+    fn EvalBinaryExpr(op:&ExpressionType,tdef:&TableDef, leftValue:&Value,rightValue:&Value,row:&Vec<Value>)->Result<Value,BTreeError>
     {
         let mut left = leftValue.clone();
         if let Value::ID(id) = leftValue
         {
-            if let Some(v) = rc.Get(&id)
+            if let Some(idx) = tdef.GetColumnIndex(id)
             {
-                left = v;
+                if idx < row.len()
+                {
+                    left = row[idx].clone();
+                }
+                else {
+                    return Err(BTreeError::ParamNotFound(String::from_utf8(id.to_vec()).unwrap()))
+                }
             }
             else {
                 return Err(BTreeError::ParamNotFound(String::from_utf8(id.to_vec()).unwrap()))
@@ -173,9 +182,15 @@ impl Expr{
         let mut right = rightValue.clone();
         if let Value::ID(id) = rightValue
         {
-            if let Some(v) = rc.Get(&id)
+            if let Some(idx) = tdef.GetColumnIndex(id)
             {
-                right = v;
+                if idx < row.len()
+                {
+                    right = row[idx].clone();
+                }
+                else {
+                    return Err(BTreeError::ParamNotFound(String::from_utf8(id.to_vec()).unwrap()))
+                }
             }
             else {
                 return Err(BTreeError::ParamNotFound(String::from_utf8(id.to_vec()).unwrap()))
@@ -202,14 +217,20 @@ impl Expr{
         Err( BTreeError::OperationNotSupported(String::from("")) )
     }
 
-    fn EvalUnaryExpr(op:&ExpressionType,leftValue:&Value,rc:&Record)->Result<Value,BTreeError>
+    fn EvalUnaryExpr(op:&ExpressionType,tdef:&TableDef,leftValue:&Value,row:&Vec<Value>)->Result<Value,BTreeError>
     {
         let mut value = leftValue.clone();
         if let Value::ID(id) = leftValue
         {
-            if let Some(v) = rc.Get(&id)
+            if let Some(idx) = tdef.GetColumnIndex(id)
             {
-                value = v;
+                if idx < row.len()
+                {
+                    value = row[idx].clone();
+                }
+                else {
+                    return Err(BTreeError::ParamNotFound(String::from_utf8(id.to_vec()).unwrap()))
+                }
             }
             else {
                 return Err(BTreeError::ParamNotFound(String::from_utf8(id.to_vec()).unwrap()))
@@ -592,25 +613,25 @@ fn EExpr_eval()
 
     let statement = "name";
     let expr = Expr().parse(statement).unwrap().1;
-    let ret = expr.eval(&r);
+    let ret = expr.eval(&table,&r.Vals);
     assert!(ret.is_ok());
     println!("Expr:{}  Result:{}",statement,ret.unwrap());
 
     let statement = "age + 40 ";
     let expr = Expr().parse(statement).unwrap().1;
-    let ret = expr.eval(&r);
+    let ret = expr.eval(&table,&r.Vals);
     assert!(ret.is_ok());
     println!("Expr:{}  Result:{}",statement,ret.unwrap());
 
     let statement = "-age + 60 ";
     let expr = Expr().parse(statement).unwrap().1;
-    let ret = expr.eval(&r);
+    let ret = expr.eval(&table,&r.Vals);
     assert!(ret.is_ok());
     println!("Expr:{}  Result:{}",statement,ret.unwrap());
 
     let statement = "married = false and name = 'Bob504' and age <= 20 ";
     let expr = Expr().parse(statement).unwrap().1;
-    let ret = expr.eval(&r);
+    let ret = expr.eval(&table,&r.Vals);
     assert!(ret.is_ok());
     println!("Expr:{}  Result:{}",statement,ret.unwrap());
  

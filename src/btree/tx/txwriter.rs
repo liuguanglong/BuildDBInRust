@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display, sync::{Arc, RwLock}};
 
 use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, parser::{delete::DeleteExpr, expr::Expr, insert::InsertExpr, lib::Parser, select::SelectExpr, statement::{ExprSQL, ExprSQLList, SQLExpr, ScanExpr}, update::UpdateExpr}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_INSERT_ONLY, MODE_UPDATE_ONLY, MODE_UPSERT};
-use super::{tx::{self, Tx}, txRecord::{DataRow, DataTable, TxRecord, TxTable}, txScanner::{self, TxScanner}, txbiter::TxBIter, txinterface::{DBTxInterface, TxInterface, TxReadContext, TxReaderInterface, TxWriteContext}};
+use super::{tx::{self, Tx}, txRecord::{DataRow, DataTable}, txScanner::{self, TxScanner}, txbiter::TxBIter, txinterface::{DBTxInterface, TxInterface, TxReadContext, TxReaderInterface, TxWriteContext}};
 
 pub struct txwriter{
     pub context : Tx,
@@ -148,8 +148,8 @@ impl DBTxInterface for txwriter{
 
 impl TxReaderInterface for txwriter{
 
-        // get a single row by the primary key
-        fn dbGet(&self,rec:&mut Record)->Result<bool,BTreeError> {
+    // get a single row by the primary key
+    fn dbGet(&self,rec:&mut Record)->Result<bool,BTreeError> {
         let bCheck = rec.checkPrimaryKey();
         if bCheck == false {
             return Err(BTreeError::PrimaryKeyIsNotSet);
@@ -327,11 +327,7 @@ impl txwriter{
 
     fn evalFilterExpr(expr:&Expr,tdef:&TableDef,row:&DataRow)->bool
     {
-        //Todo
-        let mut rc = Record::new(&tdef);
-        rc.Vals = row.Vals.clone();
-
-        if let Ok(Value::BOOL(true)) = expr.eval(&rc)
+        if let Ok(Value::BOOL(true)) = expr.eval(tdef,&row.Vals)
         {
             return true;
         }
@@ -362,7 +358,7 @@ impl txwriter{
         {
             for i in 0..cmd.Name.len()
             {
-                if let Ok(v) = cmd.Values[i].eval(&r)
+                if let Ok(v) = cmd.Values[i].eval(&tdef,&r.Vals)
                 {
                     if let Err(ex) = r.Set(&cmd.Name[i], v)
                     {

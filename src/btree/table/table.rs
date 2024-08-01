@@ -36,6 +36,18 @@ impl TableDef{
         return t
     }
 
+    pub fn GetColumnIndex(&self, key: &[u8])-> Option<usize> {
+        for i in 0..self.Cols.len()
+        {
+            let cmp = crate::btree::util::compare_arrays(&self.Cols[i], key);
+            if  cmp == 0
+            {
+                return Some(i);
+            }
+        }
+        return None;
+    }
+
     pub fn FixIndexes(&mut self)
     {
         //Add Primary Key To Indexes

@@ -162,15 +162,7 @@ impl<'a> Record<'a> {
     }
 
     fn GetColumnIndex(&self, key: &[u8])-> Option<usize> {
-        for i in 0..self.def.Cols.len()
-        {
-            let cmp = crate::btree::util::compare_arrays(&self.def.Cols[i], key);
-            if  cmp == 0
-            {
-                return Some(i);
-            }
-        }
-        return None;
+        self.def.GetColumnIndex(key)
     }
 
     // order-preserving encoding

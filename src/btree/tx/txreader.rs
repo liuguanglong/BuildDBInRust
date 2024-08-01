@@ -124,7 +124,7 @@ impl TxReader{
         let mut rc = Record::new(&tdef);
         rc.Vals = rc.Vals.clone();
 
-        if let Ok(Value::BOOL(true)) = expr.eval(&rc)
+        if let Ok(Value::BOOL(true)) = expr.eval(tdef,&rc.Vals)
         {
             return true;
         }
