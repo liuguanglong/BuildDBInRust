@@ -99,14 +99,16 @@ fn write(i:u64,db:DBInstance)
     {
         let mut rng = rand::thread_rng();
         let random_number: u64 = rng.gen_range(10..20);
-        let mut reader = db.beginRead().unwrap();
+        thread::sleep(Duration::from_millis(random_number));
 
+        let mut reader = db.beginRead().unwrap();
+        
         println!("Begin Read:{}",i);        
         let statements = format!("select id,name,address, age from person index by id = '{}';",i);
         if let Ok(list) = reader.ExecuteSQLStatments(statements)
         {
             list.iter().for_each(
-                |table| { println!("{}",table);}
+                |table| { println!("Read Result:{} -{}",i,table);}
             );
         }
         println!("End Read:{}",i);        

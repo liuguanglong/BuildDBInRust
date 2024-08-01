@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::{Arc, RwLock, RwLockReadGuard}};
 
-use crate::btree::{db::TDEF_TABLE, kv::{node::BNode, nodeinterface::{BNodeReadInterface, BNodeWriteInterface}}, parser::{expr::Expr, lib::Parser, select::SelectExpr, statement::{ExprSQL, ExprSQLList, SQLExpr}}, scan::{biter::BIter, comp::OP_CMP}, table::{record::Record, table::TableDef, value::Value}, BTreeError, BTREE_PAGE_SIZE};
+use crate::btree::{db::TDEF_TABLE, kv::{node::BNode, nodeinterface::{BNodeReadInterface, BNodeWriteInterface}}, parser::{expr::Expr, lib::Parser, select::SelectExpr, statement::{ExprSQL, ExprSQLList, SQLExpr}}, scan::{self, biter::BIter, comp::OP_CMP}, table::{record::Record, table::TableDef, value::Value}, BTreeError, BTREE_PAGE_SIZE};
 use super::{txRecord::{DataRow, DataTable}, txScanner::TxScanner, txbiter::TxBIter, txinterface::{DBReadInterface, TxReadContext, TxReaderInterface}, winmmap::Mmap};
 
 pub struct TxReader{
@@ -85,22 +85,30 @@ impl TxReader{
             let mut index:usize = 0;
             let mut count:usize = 0;
             let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
+            if scanner.is_ok()
+            {
+                println!("Scanner ok!");
+            }
+
             match &mut scanner {
                 Ok(cursor) =>{
                     cursor.into_iter()
-                    .filter(|x| 
+                    // .filter(|x| 
+                    //     {
+                    //             if let Some(filter) = &cmd.Scan.Filter
+                    //             {
+                    //                Self::evalFilterExpr(&filter, &tdef,&x)
+                    //             }
+                    //             else {
+                    //                 true
+                    //             }
+                    //     })
+                    // .skip(cmd.Scan.Offset)
+                    // .take(cmd.Scan.Limit)
+                    .for_each(|x| 
                         {
-                                if let Some(filter) = &cmd.Scan.Filter
-                                {
-                                   Self::evalFilterExpr(&filter, &tdef,&x)
-                                }
-                                else {
-                                    true
-                                }
-                        })
-                    .skip(cmd.Scan.Offset)
-                    .take(cmd.Scan.Limit)
-                    .for_each(|x| txTable.Rows.push(x));
+                            txTable.Rows.push(x);
+                        });
                 },
                 Err(err) => { return Err(BTreeError::NextNotFound)}
             }
@@ -118,13 +126,9 @@ impl TxReader{
 
     }
 
-    fn evalFilterExpr(expr:&Expr,tdef:&TableDef,rc:&DataRow)->bool
+    fn evalFilterExpr(expr:&Expr,tdef:&TableDef,row:&DataRow)->bool
     {
-        //Todo
-        let mut rc = Record::new(&tdef);
-        rc.Vals = rc.Vals.clone();
-
-        if let Ok(Value::BOOL(true)) = expr.eval(tdef,&rc.Vals)
+        if let Ok(Value::BOOL(true)) = expr.eval(tdef,&row.Vals)
         {
             return true;
         }
@@ -183,6 +187,7 @@ impl TxReader{
         {
             return Err(BTreeError::NextNotFound);
         }
+
         Ok(
             if key2.is_some()
             {

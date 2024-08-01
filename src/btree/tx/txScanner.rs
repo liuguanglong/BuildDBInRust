@@ -22,8 +22,6 @@ impl<'a> Iterator for TxScanner<'a>{
             return None;
         }
 
-        self.Next();
-
         if self.Valid()
         {
             let mut record: Record = Record::new(&self.tdef);
@@ -32,8 +30,9 @@ impl<'a> Iterator for TxScanner<'a>{
             let  row = DataRow{
                 Vals : record.Vals
             };
+
+            self.Next();
             Some(row)
-   
         }
         else
         {
