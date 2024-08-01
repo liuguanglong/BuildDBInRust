@@ -1,12 +1,11 @@
 # Build Your Own Database From Scratch in Rust
 
-The Demo of accessing the database
-
+How to use database with Memory Context.
 ```rust
 fn main() {
-    let mut mctx = Arc::new(RwLock::new(memoryContext::new(BTREE_PAGE_SIZE,1000)));
-    let mut context = DbContext::new(mctx.clone());
-    let db = DBInstance::new(Database::new(context).unwrap());
+   
+    let mut context :DbContext = memoryContext::new(BTREE_PAGE_SIZE,1000).into();
+    let db:DBInstance = context.into();
 
     let createTable = r#"
     create table person
@@ -71,19 +70,21 @@ fn write(i:u64,db:DBInstance)
         let mut tx = db.beginTx().unwrap();
 
         let mut sql:String = String::new();
-        let insert = r#"
-        insert into person
-        ( id, name, address, age, married )
-        values
-        "#;
-        sql.push_str(&insert);
-        sql.push_str(format!("('{}','Bob{}','Montrel Canada H9T 1R5',20,false),", i,i).as_str());
-        sql.remove(sql.len() -1 );
-        sql.push(';');
 
-        let ret = tx.ExecuteSQLStatments(sql);
+        let insert = format!(
+            r#"
+            insert into person
+            ( id, name, address, age, married )
+            values
+            ('{}','Bob{}','Montrel Canada H9T 1R5',20,false);
+            "#,
+            i,i
+        );
+
+        let ret = tx.ExecuteSQLStatments(insert);
         //commit tx
         db.commitTx(&mut tx);
+        
         //drop writelock
         drop(lock);
         println!("End Set Value:{}-{}",i,i);        
@@ -94,16 +95,17 @@ fn write(i:u64,db:DBInstance)
     {
         let mut rng = rand::thread_rng();
         let random_number: u64 = rng.gen_range(10..20);
-        let mut reader = db.beginRead().unwrap();
+        thread::sleep(Duration::from_millis(random_number));
 
+        let mut reader = db.beginRead().unwrap();
+        
         println!("Begin Read:{}",i);        
         let statements = format!("select id,name,address, age from person index by id = '{}';",i);
         if let Ok(list) = reader.ExecuteSQLStatments(statements)
         {
-            for table in list
-            {
-                println!("{}",table);
-            }
+            list.iter().for_each(
+                |table| { println!("Read Result:{} -{}",i,table);}
+            );
         }
         println!("End Read:{}",i);        
         db.endRead(&mut reader);

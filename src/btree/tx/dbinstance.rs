@@ -1,10 +1,16 @@
 use std::{ops::{Deref, DerefMut}, sync::{Arc, Mutex}};
 use crate::btree::kv::ContextError;
 
-use super::{database::Database, shared::Shared, txinterface::TxContent, txreader::{self, TxReader}, txwriter::txwriter};
+use super::{database::Database, dbcontext::DbContext, shared::Shared, txinterface::TxContent, txreader::{self, TxReader}, txwriter::txwriter};
 
 pub struct DBInstance {
     inner: Arc<Mutex<Database>>,
+}
+
+impl From<DbContext> for DBInstance {
+    fn from(context: DbContext) -> Self {
+        DBInstance::new(Database::new(context).unwrap())
+    }
 }
 
 impl DBInstance {

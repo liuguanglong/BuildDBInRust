@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::{Arc, Mutex, RwLock}};
 
-use crate::btree::{kv::{node::BNode, nodeinterface::{BNodeFreeListInterface, BNodeReadInterface, BNodeWriteInterface}, ContextError, DB_SIG}, table::table::TableDef, BTREE_PAGE_SIZE};
+use crate::btree::{kv::{memorycontext::MemoryContext, node::BNode, nodeinterface::{BNodeFreeListInterface, BNodeReadInterface, BNodeWriteInterface}, ContextError, DB_SIG}, table::table::TableDef, BTREE_PAGE_SIZE};
 use super::{memoryContext::memoryContext, tx::Tx, txinterface::MmapInterface, txreader::TxReader, winmmap::Mmap};
 
 pub struct DbContext{
@@ -16,8 +16,13 @@ pub struct DbContext{
     nfreelist: u16, //number of pages taken from the free list
 }
 
-impl DbContext{
+impl From<memoryContext> for DbContext {
+    fn from(context: memoryContext) -> Self {
+        DbContext::new( Arc::new(RwLock::new(context)).clone())
+    }
+}
 
+impl DbContext{
     pub fn new(mmap:Arc<RwLock<dyn MmapInterface>>)->Self
     {
         DbContext{

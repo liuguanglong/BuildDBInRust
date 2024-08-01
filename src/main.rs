@@ -8,9 +8,9 @@ mod btree;
 extern crate lazy_static;
 
 fn main() {
-    let mut mctx = Arc::new(RwLock::new(memoryContext::new(BTREE_PAGE_SIZE,1000)));
-    let mut context = DbContext::new(mctx.clone());
-    let db = DBInstance::new(Database::new(context).unwrap());
+   
+    let mut context :DbContext = memoryContext::new(BTREE_PAGE_SIZE,1000).into();
+    let db:DBInstance = context.into();
 
     let createTable = r#"
     create table person
@@ -75,20 +75,21 @@ fn write(i:u64,db:DBInstance)
         let mut tx = db.beginTx().unwrap();
 
         let mut sql:String = String::new();
-        let insert = r#"
-        insert into person
-        ( id, name, address, age, married )
-        values
-        "#;
-        sql.push_str(&insert);
-        sql.push_str(format!("('{}','Bob{}','Montrel Canada H9T 1R5',20,false),", i,i).as_str());
-        sql.remove(sql.len() -1 );
-        sql.push(';');
 
-        let ret = tx.ExecuteSQLStatments(sql);
-        //println!("root :{}",tx.context.get_root());
+        let insert = format!(
+            r#"
+            insert into person
+            ( id, name, address, age, married )
+            values
+            ('{}','Bob{}','Montrel Canada H9T 1R5',20,false);
+            "#,
+            i,i
+        );
+
+        let ret = tx.ExecuteSQLStatments(insert);
         //commit tx
         db.commitTx(&mut tx);
+        
         //drop writelock
         drop(lock);
         println!("End Set Value:{}-{}",i,i);        

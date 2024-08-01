@@ -19,6 +19,13 @@ impl Drop for Database {
     }
 }
 
+
+impl From<DbContext> for Database {
+    fn from(context: DbContext) -> Self {
+        Database::new(context).unwrap()
+    }
+}
+
 impl Database{
     pub fn new(context:DbContext) -> Result<Self,ContextError> {
         let tables = Arc::new(RwLock::new(HashMap::new()));
