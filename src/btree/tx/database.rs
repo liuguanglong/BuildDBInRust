@@ -198,11 +198,12 @@ mod tests {
             let mut r3 = Record::new(&tdef);
             match &mut scanner {
                 Ok(cursor) =>{
-                    while cursor.Valid(){
-                            cursor.Deref(&tx,&mut r3);
-                            println!("{}", r3);
-                            cursor.Next();
-                        }                
+                    cursor.into_iter().for_each(|r| println!("{}",r));
+                    // while cursor.Valid(){
+                    //         cursor.Deref(&tx,&mut r3);
+                    //         println!("{}", r3);
+                    //         cursor.Next();
+                    //     }                
                 },
                 Err(err) => { println!("Error when add table:{}",err)}
                 

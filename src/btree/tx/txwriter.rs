@@ -1,9 +1,7 @@
 use std::{collections::HashMap, fmt::Display, sync::{Arc, RwLock}};
 
 use crate::btree::{btree::request::{DeleteRequest, InsertReqest}, db::{scanner::Scanner, INDEX_ADD, INDEX_DEL, TDEF_META, TDEF_TABLE}, kv::{node::BNode, nodeinterface::{BNodeOperationInterface, BNodeReadInterface, BNodeWriteInterface}}, parser::{delete::DeleteExpr, expr::Expr, insert::InsertExpr, lib::Parser, select::SelectExpr, statement::{ExprSQL, ExprSQLList, SQLExpr, ScanExpr}, update::UpdateExpr}, scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::Value}, BTreeError, MODE_INSERT_ONLY, MODE_UPDATE_ONLY, MODE_UPSERT};
-
 use super::{tx::{self, Tx}, txRecord::{DataRow, DataTable, TxRecord, TxTable}, txScanner::{self, TxScanner}, txbiter::TxBIter, txinterface::{DBTxInterface, TxInterface, TxReadContext, TxReaderInterface, TxWriteContext}};
-
 
 pub struct txwriter{
     pub context : Tx,
@@ -266,31 +264,21 @@ impl txwriter{
             let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
             match &mut scanner {
                 Ok(cursor) =>{
-                    while cursor.Valid(){
 
-                            let mut status =  expr.Offset <= index &&  expr.Limit >= count;
-                            let mut record: Record = Record::new(&tdef);
-                            if status == true
+                    cursor.into_iter()
+                    .filter(|x| 
+                        {
+                            if let Some(filter) = &expr.Filter
                             {
-                                cursor.Deref(self,&mut record);    
-                                if let Some(filter) = &expr.Filter
-                                {
-                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
-                                   status = status && filterStatus;
-                                }
+                                Self::evalFilterExpr(&filter, tdef,&x)
                             }
-
-                            if status == true
-                            {   
-                                let mut rc: DataRow = DataRow::new();
-                                rc.Vals = record.Vals;
-                                fnProcess(rc);
-                                count += 1;
+                            else {
+                                true
                             }
-
-                            index += 1;
-                            cursor.Next();
-                        }                
+                        })
+                    .skip(expr.Offset)
+                    .take(expr.Limit)
+                    .for_each(|x| fnProcess(x));
                 },
                 Err(err) => { return Err(BTreeError::NextNotFound)}
             }
@@ -326,17 +314,23 @@ impl txwriter{
 
         self.search(&tdef, &cmd.Scan, fnProcessRecord);
 
-        for v in &txTable.Rows.get(0).as_ref().unwrap().Vals
-        {   
-            txTable.Types.push(v.GetValueType());
+        if txTable.Rows.len() > 0
+        {
+            for v in &txTable.Rows.get(0).as_ref().unwrap().Vals
+            {   
+                txTable.Types.push(v.GetValueType());
+            }
         }
-
         Ok(txTable)
 
     }
 
-    fn evalFilterExpr(expr:&Expr,rc:&Record)->bool
+    fn evalFilterExpr(expr:&Expr,tdef:&TableDef,row:&DataRow)->bool
     {
+        //Todo
+        let mut rc = Record::new(&tdef);
+        rc.Vals = row.Vals.clone();
+
         if let Ok(Value::BOOL(true)) = expr.eval(&rc)
         {
             return true;
@@ -405,17 +399,14 @@ impl txwriter{
         };
 
         self.search(&tdef, &cmd.Scan, fnProcessRecord);
-
-        for r in list
-        {
-            if let Ok(v) = self.DeleteRecord(&r)
-            {
-                if v == true
+        list.iter().for_each(
+            |row| {
+                if let Ok(true) = self.DeleteRecord(&row)
                 {
-                    count += 1;
+                        count += 1;
                 }
             }
-        }
+        );
 
         Ok(count)
     }
@@ -510,10 +501,10 @@ impl txwriter{
         Ok(
             if key2.is_some()
             {
-                TxScanner::new(idxNumber,cmp1,cmp2,keyStart,Some(keyEnd),iter)
+                TxScanner::new(self,key1.def.clone(),idxNumber,cmp1,cmp2,keyStart,Some(keyEnd),iter)
             }
             else {
-                TxScanner::new(idxNumber,cmp1,cmp2,keyStart,None,iter)
+                TxScanner::new(self,key1.def.clone(),idxNumber,cmp1,cmp2,keyStart,None,iter)
             }
         )
 
@@ -1128,11 +1119,13 @@ mod tests {
             let mut r3 = Record::new(&tdef);
             match &mut scanner {
                 Ok(cursor) =>{
-                    while cursor.Valid(){
-                            cursor.Deref(&dbinstance,&mut r3);
-                            println!("{}", r3);
-                            cursor.Next();
-                        }                
+                    cursor.into_iter().for_each(|v| println!("{}",v));
+                    // cursor.iter().for_each(|v| println!("{}",v));
+                    // while cursor.Valid(){
+                    //         cursor.Deref(&dbinstance,&mut r3);
+                    //         println!("{}", r3);
+                    //         cursor.Next();
+                    //     }                
                 },
                 Err(err) => { println!("Error when add table:{}",err)}
                 
@@ -1198,11 +1191,13 @@ mod tests {
             let mut r3 = Record::new(&tdef1);
             match &mut scanner {
                 Ok(cursor) =>{
-                    while cursor.Valid(){
-                            cursor.Deref(&txwriter,&mut r3);
-                            println!("{}", r3);
-                            cursor.Next();
-                        }                
+                    cursor.into_iter().for_each(|v| println!("{}",v));
+
+                    // while cursor.Valid(){
+                    //         cursor.Deref(&txwriter,&mut r3);
+                    //         println!("{}", r3);
+                    //         cursor.Next();
+                    //     }                
                 },
                 Err(err) => { println!("Error Get Cursor:{}",err)}
                 

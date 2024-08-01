@@ -87,39 +87,20 @@ impl TxReader{
             let mut scanner = self.Scan( cmp1, cmp2, &key1, key2.as_ref());
             match &mut scanner {
                 Ok(cursor) =>{
-                    while cursor.Valid(){
-
-                            let mut status =  cmd.Scan.Offset <= index &&  cmd.Scan.Limit >= count;
-                            let mut record: Record = Record::new(&tdef);
-                            if status == true
-                            {
-                                cursor.Deref(self,&mut record);
-    
+                    cursor.into_iter()
+                    .filter(|x| 
+                        {
                                 if let Some(filter) = &cmd.Scan.Filter
                                 {
-                                   let filterStatus = Self::evalFilterExpr(&filter, &record);
-                                   status = status && filterStatus;
+                                   Self::evalFilterExpr(&filter, &tdef,&x)
                                 }
-                            }
-
-                            if status == true
-                            {    
-                                let mut rc: DataRow = DataRow::new();
-                                //Calc Column
-                                for i in 0..cmd.Ouput.len()
-                                {
-                                    if let Ok(v) = cmd.Ouput[i].eval(&record)
-                                    {
-                                        rc.Vals.push(v);
-                                    }
+                                else {
+                                    true
                                 }
-                                txTable.Rows.push(rc);
-                                count += 1;
-                            }
-
-                            index += 1;
-                            cursor.Next();
-                        }                
+                        })
+                    .skip(cmd.Scan.Offset)
+                    .take(cmd.Scan.Limit)
+                    .for_each(|x| txTable.Rows.push(x));
                 },
                 Err(err) => { return Err(BTreeError::NextNotFound)}
             }
@@ -137,8 +118,12 @@ impl TxReader{
 
     }
 
-    fn evalFilterExpr(expr:&Expr,rc:&Record)->bool
+    fn evalFilterExpr(expr:&Expr,tdef:&TableDef,rc:&DataRow)->bool
     {
+        //Todo
+        let mut rc = Record::new(&tdef);
+        rc.Vals = rc.Vals.clone();
+
         if let Ok(Value::BOOL(true)) = expr.eval(&rc)
         {
             return true;
@@ -201,10 +186,10 @@ impl TxReader{
         Ok(
             if key2.is_some()
             {
-                TxScanner::new(idxNumber,cmp1,cmp2,keyStart,Some(keyEnd),iter)
+                TxScanner::new(self,key1.def.clone(),idxNumber,cmp1,cmp2,keyStart,Some(keyEnd),iter)
             }
             else {
-                TxScanner::new(idxNumber,cmp1,cmp2,keyStart,None,iter)
+                TxScanner::new(self,key1.def.clone(),idxNumber,cmp1,cmp2,keyStart,None,iter)
             }
         )
 
