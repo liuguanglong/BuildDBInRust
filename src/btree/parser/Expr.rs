@@ -1,6 +1,5 @@
-use std::fmt;
+use std::{cmp::Ordering, fmt};
 use crate::btree::{scan::comp::OP_CMP, table::{record::Record, table::TableDef, value::{Value, ValueError, ValueType}}, tx::txRecord::DataRow, BTreeError};
-
 use super::lib::*;
 
 const KEYS: [&str; 19] = ["select", "not", "and", "index", "from","filter","or","limit","by","as","insert","into","values","create","table","primary","key","true","false"];
@@ -198,21 +197,58 @@ impl Expr{
         }
 
         match op {
-            ExpressionType::Add => return left.Add(right.clone()),
-            ExpressionType::Subtract => return left.Subtract(right.clone()),
-            ExpressionType::Multiply => return left.Multiply(right.clone()),
-            ExpressionType::Divide => return left.Divide(right.clone()),
-            ExpressionType::Modulo => return left.Modulo(right.clone()),
-            ExpressionType::LT => return left.Compare(right.clone(),OP_CMP::CMP_LT),
-            ExpressionType::LE => return left.Compare(right.clone(),OP_CMP::CMP_LE),
-            ExpressionType::GE => return left.Compare(right.clone(),OP_CMP::CMP_GE),
-            ExpressionType::GT => return left.Compare(right.clone(),OP_CMP::CMP_GT),
+            ExpressionType::Add => return left + right,
+            ExpressionType::Subtract => return left - right,
+            ExpressionType::Multiply => return left * right,
+            ExpressionType::Divide => return left / right,
+            ExpressionType::Modulo => return left % right,
+            ExpressionType::LT => 
+                    match left.partial_cmp(&right)
+                    {
+                        Some(Ordering::Less)|Some(Ordering::Equal) => return Ok(Value::BOOL(true)),
+                        Some(Ordering::Greater) => return Ok(Value::BOOL(false)),
+                        None => return Err(BTreeError::OperationNotSupported(String::from("LT")) ),
+                    },
+            ExpressionType::LE => 
+                    match left.partial_cmp(&right)
+                    {
+                        Some(Ordering::Less) => return Ok(Value::BOOL(true)),
+                        Some(Ordering::Greater)|Some(Ordering::Equal) => return Ok(Value::BOOL(false)),
+                        None => return Err(BTreeError::OperationNotSupported(String::from("LE")) ),
+                    },
+            ExpressionType::GE => 
+                match left.partial_cmp(&right)
+                {
+                    Some(Ordering::Less) => return Ok(Value::BOOL(false)),
+                    Some(Ordering::Greater)|Some(Ordering::Equal) => return Ok(Value::BOOL(true)),
+                    None => return Err(BTreeError::OperationNotSupported(String::from("GE")) ),
+                },
+            ExpressionType::GT => 
+                match left.partial_cmp(&right)
+                {
+                    Some(Ordering::Less)|Some(Ordering::Equal)  => return Ok(Value::BOOL(false)),
+                    Some(Ordering::Greater)=> return Ok(Value::BOOL(true)),
+                    None => return Err(BTreeError::OperationNotSupported(String::from("GT")) ),
+            },
             ExpressionType::AND => return left.LogicOp(right.clone(), |x,y| x && y),
             ExpressionType::OR => return left.LogicOp(right.clone(), |x,y| x || y),
-            ExpressionType::EQ =>return left.Compare(right.clone(),OP_CMP::CMP_EQ),
-            ExpressionType::UnEQ => return left.Compare(right.clone(),OP_CMP::CMP_UnEQ),
-            _Other => return Err( BTreeError::OperationNotSupported(String::from("")) ),
-        };
+            ExpressionType::EQ =>{
+                match left.partial_cmp(&right)
+                {
+                    Some(Ordering::Equal)  => return Ok(Value::BOOL(true)),
+                    Some(Ordering::Less)|Some(Ordering::Greater)=> return Ok(Value::BOOL(false)),
+                    None => return Err(BTreeError::OperationNotSupported(String::from("EQ")) ),
+                }
+            },
+            ExpressionType::UnEQ =>             
+                match left.partial_cmp(&right)
+                {
+                    Some(Ordering::Equal)  => return Ok(Value::BOOL(false)),
+                    Some(Ordering::Less)|Some(Ordering::Greater)=> return Ok(Value::BOOL(true)),
+                    None => return Err(BTreeError::OperationNotSupported(String::from("NE")) ),
+                },
+            _other => return Err( BTreeError::OperationNotSupported(String::from("")) ),
+        }
 
         Err( BTreeError::OperationNotSupported(String::from("")) )
     }
@@ -259,8 +295,8 @@ impl Expr{
 
         Err(BTreeError::OperationNotSupported(String::from("")) )
     }
-
 }
+
 #[derive(Clone,Debug,PartialEq)]
 pub enum ExpressionType
 {
