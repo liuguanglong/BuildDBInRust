@@ -308,12 +308,19 @@ impl txwriter{
             }
         }
 
-        let fnProcessRecord = |r| {
-            txTable.Rows.push(r);
+        let fnProcessRecord = |r:DataRow| {
+            let mut rc: DataRow = DataRow::new();
+            for i in 0..cmd.Ouput.len()
+            {
+                if let Ok(v) = cmd.Ouput[i].eval(&tdef,&r.Vals)
+                {
+                    rc.Vals.push(v);
+                }
+            }
+            txTable.Rows.push(rc);
         };
 
         self.search(&tdef, &cmd.Scan, fnProcessRecord);
-
         if txTable.Rows.len() > 0
         {
             for v in &txTable.Rows.get(0).as_ref().unwrap().Vals
@@ -1116,12 +1123,6 @@ mod tests {
             match &mut scanner {
                 Ok(cursor) =>{
                     cursor.into_iter().for_each(|v| println!("{}",v));
-                    // cursor.iter().for_each(|v| println!("{}",v));
-                    // while cursor.Valid(){
-                    //         cursor.Deref(&dbinstance,&mut r3);
-                    //         println!("{}", r3);
-                    //         cursor.Next();
-                    //     }                
                 },
                 Err(err) => { println!("Error when add table:{}",err)}
                 

@@ -1,37 +1,20 @@
 # Build Your Own Database From Scratch in Rust
 
-How to use database with Memory Context.
+How to use database.
+
+A sample about concurrent requests with insert and read from database. 
 ```rust
 fn main() {
-   
-    let mut context :DbContext = memoryContext::new(BTREE_PAGE_SIZE,1000).into();
+    let mut handles = vec![];
+
+    let mut context:DbContext = WinMmap::new("c:/temp/rustdb.dat".as_bytes(),BTREE_PAGE_SIZE,1000).unwrap().into();
+    //let mut context :DbContext = memoryContext::new(BTREE_PAGE_SIZE,1000).into();
     let db:DBInstance = context.into();
 
-    let createTable = r#"
-    create table person
-    ( 
-        id vchar,
-        name vchar,
-        address vchar,
-        age int16,
-        married bool,
-        primary key (id),
-        index (address,married),
-        index (name),
-    );
-   "#;
+    //create table
+    createTable(db.clone());
 
-    let mut db1 = db.clone();
-
-    let mut tx = db1.beginTx().unwrap();
-    let ret = tx.ExecuteSQLStatments(createTable.to_string());
-    if let Err(ret) = ret
-    {
-        println!("Error when add table:{}",ret);
-    }
-    db1.commitTx(&mut tx);
-
-    let mut handles = vec![];
+    //insert records
     for i in 1..10 {
         let ct =  db.clone();
         let handle = thread::spawn(move || {
@@ -39,8 +22,9 @@ fn main() {
         });
         handles.push(handle);
     }
-
+    
     thread::sleep(Duration::from_millis(20));
+    //read records
     for i in 1..10 {
         let instance =  db.clone();
         let handle = thread::spawn(move || {
@@ -55,8 +39,46 @@ fn main() {
 
 }
 
+fn createTable(db:DBInstance)
+{
+    let createTable = r#"
+    create table person
+    ( 
+        id vchar,
+        name vchar,
+        address vchar,
+        age int16,
+        married bool,
+        primary key (id),
+        index (address,married),
+        index (name),
+    );
+   "#;
+
+    let mut tx = db.beginTx().unwrap();
+    let ret = tx.ExecuteSQLStatments(createTable.to_string());
+    if let Err(ret) = ret
+    {
+        println!("Error when add table:{}",ret);
+    }
+    db.commitTx(&mut tx);
+    
+}
+
 fn write(i:u64,db:DBInstance)
     {
+        let mut sql:String = String::new();
+
+        let insert = format!(
+            r#"
+            insert into person
+            ( id, name, address, age, married )
+            values
+            ('{}','Bob{}','Montrel Canada H9T 1R5',20,false);
+            "#,
+            i,i
+        );
+
         let mut rng = rand::thread_rng();
         let random_number: u64 = rng.gen_range(2..10);
         thread::sleep(Duration::from_millis(random_number));
@@ -68,15 +90,6 @@ fn write(i:u64,db:DBInstance)
         println!("Begin Set Value:{}-{}",i,i);        
         //begin tx 
         let mut tx = db.beginTx().unwrap();
-        let insert = format!(
-            r#"
-            insert into person
-            ( id, name, address, age, married )
-            values
-            ('{}','Bob{}','Montrel Canada H9T 1R5',20,false);
-            "#,
-            i,i
-        );
 
         let ret = tx.ExecuteSQLStatments(insert);
         //commit tx
@@ -90,6 +103,8 @@ fn write(i:u64,db:DBInstance)
 
     fn read(i:u64,db:DBInstance)
     {
+        let statements = format!("select id,name,address, age, age > 18 as adult from person index by id = '{}';",i);
+
         let mut rng = rand::thread_rng();
         let random_number: u64 = rng.gen_range(10..20);
         thread::sleep(Duration::from_millis(random_number));
@@ -97,7 +112,6 @@ fn write(i:u64,db:DBInstance)
         let mut reader = db.beginRead().unwrap();
         
         println!("Begin Read:{}",i);        
-        let statements = format!("select id,name,address, age from person index by id = '{}';",i);
         if let Ok(list) = reader.ExecuteSQLStatments(statements)
         {
             list.iter().for_each(
@@ -107,8 +121,64 @@ fn write(i:u64,db:DBInstance)
         println!("End Read:{}",i);        
         db.endRead(&mut reader);
     }
+```
+Support Two Type of Context.
 
+  1.Memory Context
+```rust
+    let mut context :DbContext = memoryContext::new(BTREE_PAGE_SIZE,1000).into();
+```
 
+  2.File Context
+```rust
+    let mut context:DbContext = WinMmap::new("d:/rustdb.dat".as_bytes(),BTREE_PAGE_SIZE,1000).unwrap().into();
+```
+
+Suppored Sql Grammar
+```sql
+create table table_name (
+  a type1,
+  b type2,
+  
+  index (c, b, a),
+  index (d, e, f),
+  primary key (a, b),
+);
+
+select expr from table_name index by expr  limit 10 offset 200;
+insert into table_name (c1,c2,c3) values (a, b, c),(a1,b1,c1);
+delete from table_name index expr filter expr;
+update table_name set a = expr, b = expr, index by expr filter expr;
+
+```
+The INDEX BY clause explicitly selects the index for the query. It represents an indexed     
+point query or an indexed range query, and the range can be either open-ended or     
+closed. It also controls the order of the rows.     
+```
+select expr... from table_name index by a = 1;
+select expr... from table_name index by a > 1;
+select expr... from table_name index by a > 1 and a < 5
+select expr... from table_name index by a = 1 and b = 2 and c > 5;  //index a,b,c
+select expr... from table_name index by a = 1 and b = 2 and c > 5 and c < 3;  //index a,b,c
+```
+
+The FILTER clause selects rows without using indexes. Both the INDEX BY and the     
+FILTER clauses are optional.
+The whole filter condition is calc as a whole expr.
+```
+select expr... from table_name index by ... filter a > 20 or b < 30 and name > 'bob';
+```
+
+Supported operator in Expr and Operator precedence
+```
+-a, Not a
+a * b, a / b
+a + b, a - b
+a < b, a > b, a <= b, a >= b 
+a = b, a != b
+NOT a
+a AND b
+a OR b
 ```
 
 

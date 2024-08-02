@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::{Arc, Mutex, RwLock}};
 
 use crate::btree::{kv::{memorycontext::MemoryContext, node::BNode, nodeinterface::{BNodeFreeListInterface, BNodeReadInterface, BNodeWriteInterface}, ContextError, DB_SIG}, table::table::TableDef, BTREE_PAGE_SIZE};
-use super::{memoryContext::memoryContext, tx::Tx, txinterface::MmapInterface, txreader::TxReader, winmmap::Mmap};
+use super::{memoryContext::memoryContext, tx::Tx, txinterface::MmapInterface, txreader::TxReader, windowsfileContext::WinMmap, winmmap::Mmap};
 
 pub struct DbContext{
     //mmapObj:&'a mut dyn MmapInterface,
@@ -18,6 +18,12 @@ pub struct DbContext{
 
 impl From<memoryContext> for DbContext {
     fn from(context: memoryContext) -> Self {
+        DbContext::new( Arc::new(RwLock::new(context)).clone())
+    }
+}
+
+impl From<WinMmap> for DbContext {
+    fn from(context: WinMmap) -> Self {
         DbContext::new( Arc::new(RwLock::new(context)).clone())
     }
 }
@@ -64,8 +70,8 @@ impl DbContext{
 
     // the master page format.
     // it contains the pointer to the root and other important bits.
-    // | sig | btree_root | page_used |
-    // | 16B | 8B | 8B |
+    //| sig | btree_root | page_used | free_list | version |
+    //| 16B | 8B | 8B | 8B | 8B |    
     pub fn masterload(&mut self)->Result<(),ContextError>
     {
         //Init Db file
@@ -74,18 +80,9 @@ impl DbContext{
                 return Err(ContextError::ExtendNTSectionError);
             };
 
-
             let mut newNode = BNode::new(BTREE_PAGE_SIZE);
             newNode.flnSetHeader(0, 0);
             newNode.flnSetTotal(0);
-
-            // unsafe {
-            //     let buffer = self.mmap.read().unwrap().ptr;
-            //     for i  in 0..BTREE_PAGE_SIZE
-            //     {
-            //         *buffer.add(BTREE_PAGE_SIZE*2 + i) = newNode.data()[i];
-            //     }
-            // }
 
             self.freehead = 0;
             if self.root == 0 {
@@ -106,6 +103,7 @@ impl DbContext{
             self.pageflushed = 2;
             self.nfreelist = 0;
             self.nappend = 0;
+            self.version = 0;
 
             self.masterStore();
             let ret = self.mmapObj.write().unwrap().syncContext();
@@ -121,6 +119,8 @@ impl DbContext{
         unsafe {
             let mut mmap = self.mmapObj.read().unwrap().getMmap();
             let buffer =  mmap.read().unwrap().ptr;
+
+            //read sig
             for i in 0..16
             {
                 if *buffer.add(i) != DB_SIG[i]
@@ -132,12 +132,14 @@ impl DbContext{
             let mut pos: usize = 16;
             let mut content:[u8;8] = [0;8];
             
+            //read root
             for i in 0..8
             {
                 content[i] = *buffer.add(i+ pos);
             }
             let root = u64::from_le_bytes(content[0..8].try_into().unwrap());
 
+            //read flushed page
             pos = 24;
             for i in 0..8
             {
@@ -145,6 +147,7 @@ impl DbContext{
             }
             let used = u64::from_le_bytes(content[0..8].try_into().unwrap());
 
+            //read freelist head
             pos = 32;
             for i in 0..8
             {
@@ -152,6 +155,7 @@ impl DbContext{
             }
             let freehead = u64::from_le_bytes(content[0..8].try_into().unwrap());
 
+            //read version
             pos = 40;
             for i in 0..8
             {
@@ -219,7 +223,7 @@ impl DbContext{
                 let offset:usize = ptr as usize * BTREE_PAGE_SIZE;
                 unsafe {
                     let mut mmap = self.mmapObj.read().unwrap().getMmap();
-                    let buffer =  mmap.read().unwrap().ptr;;
+                    let buffer =  mmap.read().unwrap().ptr;
                     for i in 0..BTREE_PAGE_SIZE
                     {
                         *buffer.add(i + offset as usize) = v.data()[i];

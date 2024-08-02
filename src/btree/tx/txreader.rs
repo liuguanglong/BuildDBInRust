@@ -93,21 +93,17 @@ impl TxReader{
             match &mut scanner {
                 Ok(cursor) =>{
                     cursor.into_iter()
-                    // .filter(|x| 
-                    //     {
-                    //             if let Some(filter) = &cmd.Scan.Filter
-                    //             {
-                    //                Self::evalFilterExpr(&filter, &tdef,&x)
-                    //             }
-                    //             else {
-                    //                 true
-                    //             }
-                    //     })
-                    // .skip(cmd.Scan.Offset)
-                    // .take(cmd.Scan.Limit)
-                    .for_each(|x| 
+                    .for_each(|r| 
                         {
-                            txTable.Rows.push(x);
+                            let mut rc: DataRow = DataRow::new();
+                            for i in 0..cmd.Ouput.len()
+                            {
+                                if let Ok(v) = cmd.Ouput[i].eval(&tdef,&r.Vals)
+                                {
+                                    rc.Vals.push(v);
+                                }
+                            }
+                            txTable.Rows.push(rc);
                         });
                 },
                 Err(err) => { return Err(BTreeError::NextNotFound)}
