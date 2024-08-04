@@ -1,0 +1,36 @@
+
+syntax = "proto3";
+package DBService;
+
+service SQLExecutor {
+    rpc ExecuteQuery (SQLRequest) returns (DataTable);
+    rpc ExecuteCommand (SQLRequest) returns (SQLResult);
+}
+
+message SQLRequest {
+    string SQLStatement = 1;
+}
+
+message SQLResult {
+    uint32 affected = 1;   
+}
+
+message DataTable {
+    string name = 1;
+    repeated Column Columns = 2;
+    repeated bytes Rows = 3;
+}
+
+message Column{
+    string name = 1;
+    ValueType type = 2;
+}
+
+enum ValueType {
+    BYTES = 0;
+    INT64 = 1;
+    INT32 = 2;
+    INT16 = 3;
+    INT8 = 4;
+    BOOL = 5;
+}

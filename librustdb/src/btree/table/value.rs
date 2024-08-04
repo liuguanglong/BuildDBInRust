@@ -1,8 +1,8 @@
 use core::panic;
 use std::{cmp::Ordering, fmt, ops::{Add, Div, Mul, Rem, Sub}};
 use serde::{Serialize, Deserialize};
-
 use crate::btree::{scan::comp::OP_CMP, BTreeError};
+use std::cmp::PartialOrd;
 
 pub enum ValueError{
     OperationNotSupported(String),
@@ -84,6 +84,69 @@ impl Value{
         match (self,v) {
             (Value::BOOL(v), Value::BOOL(v1)) => Ok(Value::BOOL( f(*v,v1))),
             _Other => Err(BTreeError::OperationNotSupported(String::from("Compare"))),
+        }
+    }
+
+    pub fn encodeVal(&self, list:&mut Vec<u8>) {
+
+        match &self
+         {
+            Value::INT8(v) => list.extend_from_slice(&v.to_le_bytes()),
+            Value::INT16(v) => list.extend_from_slice(&v.to_le_bytes()),
+            Value::INT32(v) => list.extend_from_slice(&v.to_le_bytes()),
+            Value::INT64(v) => list.extend_from_slice(&v.to_le_bytes()),
+            Value::BOOL(v) => {
+                if *v == true {
+                    list.extend_from_slice(&[1;1]);
+                } else {
+                    list.extend_from_slice(&[0;1]);
+                }
+            },
+            Value::BYTES(v) => {
+                crate::btree::util::escapeString(v, list);
+                //list.extend_from_slice(v);
+                list.push(0);
+            },
+            _Other =>
+            {
+
+            }
+        }
+    }
+
+    pub fn decodeVal(t:&ValueType,val:&[u8],pos: usize) -> (Value,usize) {
+        match (t) {
+            ValueType::INT8 => {
+                return (Value::INT8(i8::from_le_bytes([val[pos];1])),1);
+            },
+            ValueType::INT16 => {
+                return (Value::INT16(i16::from_le_bytes( val[pos..pos+2].try_into().unwrap() )),2);
+            },
+            ValueType::INT32 => {
+                return (Value::INT32(i32::from_le_bytes( val[pos..pos+4].try_into().unwrap() )),4);
+            },
+            ValueType::INT64 => {
+                return (Value::INT64(i64::from_le_bytes( val[pos..pos+8].try_into().unwrap() )),8);
+            },
+            ValueType::BOOL => {
+                if val[pos] == 1 {
+                    return (Value::BOOL(true),1);
+                } else {
+                    return (Value::BOOL(false),1);
+                }
+            },            
+            ValueType::BYTES => {
+                let mut end = pos;
+                while val[end] != 0
+                {
+                    end += 1;
+                }   
+                let ret = crate::btree::util::deescapeString(val[pos..end].try_into().unwrap());
+                return (Value::BYTES(ret), end - pos);
+            },
+            _=>{
+                panic!()
+            }
         }
     }
 }

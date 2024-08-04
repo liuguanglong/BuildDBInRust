@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::btree::table::{table::TableDef, value::{Value, ValueType}};
+use crate::btree::{db::INDEX_ADD, table::{table::TableDef, value::{Value, ValueType}}};
 
 pub struct DataTable{
     pub Name:Vec<u8>,
@@ -28,10 +28,10 @@ impl<'a> fmt::Display for DataTable{
     }
 }
 
+
 pub struct DataRow{
     pub Vals: Vec<Value>,
 }
-
 
 impl DataRow{
     pub fn new()->Self{
@@ -39,16 +39,33 @@ impl DataRow{
             Vals:Vec::new(),
         }
     }
-}
 
+    pub fn Seralize(&self)->Vec<u8>
+    {
+        let mut list = Vec::new();
+        for v in &self.Vals
+        {
+            v.encodeVal(&mut list);
+        }
+        list
+    }
 
-impl From<Vec<Value>> for DataRow {
-    fn from(item: Vec<Value>) -> Self {
+    pub fn Deserialize(types:Vec<ValueType>,val:&[u8])->DataRow
+    {
+        let vals = Vec::new();
+        let mut pos:usize = 0;
+        for t in types
+        {
+            let (v,len) = Value::decodeVal(&t, val, pos);
+            pos += len;
+
+        }
         DataRow{
-            Vals:item,
+            Vals:vals
         }
     }
 }
+
 
 
 impl<'a> fmt::Display for DataRow{

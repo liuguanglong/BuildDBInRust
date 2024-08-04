@@ -287,79 +287,85 @@ impl<'a> Record<'a> {
 
     fn encodeVal(&self, idx: usize, list:&mut Vec<u8>) {
 
-        match &self.Vals[idx]
-         {
-            Value::INT8(v) => list.extend_from_slice(&v.to_le_bytes()),
-            Value::INT16(v) => list.extend_from_slice(&v.to_le_bytes()),
-            Value::INT32(v) => list.extend_from_slice(&v.to_le_bytes()),
-            Value::INT64(v) => list.extend_from_slice(&v.to_le_bytes()),
-            Value::BOOL(v) => {
-                if *v == true {
-                    list.extend_from_slice(&[1;1]);
-                } else {
-                    list.extend_from_slice(&[0;1]);
-                }
-            },
-            Value::BYTES(v) => {
-                crate::btree::util::escapeString(v, list);
-                //list.extend_from_slice(v);
-                list.push(0);
-            },
-            _Other =>
-            {
+        self.Vals[idx].encodeVal(list);
+        // match &self.Vals[idx]
+        //  {
+        //     Value::INT8(v) => list.extend_from_slice(&v.to_le_bytes()),
+        //     Value::INT16(v) => list.extend_from_slice(&v.to_le_bytes()),
+        //     Value::INT32(v) => list.extend_from_slice(&v.to_le_bytes()),
+        //     Value::INT64(v) => list.extend_from_slice(&v.to_le_bytes()),
+        //     Value::BOOL(v) => {
+        //         if *v == true {
+        //             list.extend_from_slice(&[1;1]);
+        //         } else {
+        //             list.extend_from_slice(&[0;1]);
+        //         }
+        //     },
+        //     Value::BYTES(v) => {
+        //         crate::btree::util::escapeString(v, list);
+        //         //list.extend_from_slice(v);
+        //         list.push(0);
+        //     },
+        //     _Other =>
+        //     {
 
-            }
-        }
+        //     }
+        // }
     }
 
     fn decodeVal(&mut self, val:&[u8], idx: usize, pos: usize) -> usize {
-        match (self.def.Types[idx]) {
-            ValueType::INT8 => {
-                self.Vals[idx] = Value::INT8(i8::from_le_bytes([val[pos];1]));
-                return pos + 1;
-            },
-            ValueType::INT16 => {
-                self.Vals[idx] = Value::INT16(i16::from_le_bytes( val[pos..pos+2].try_into().unwrap() ));
-                return pos + 2;
-            },
-            ValueType::INT32 => {
-                self.Vals[idx] = Value::INT32(i32::from_le_bytes( val[pos..pos+4].try_into().unwrap() ));
-                return pos + 4;
-            },
-            ValueType::INT64 => {
-                self.Vals[idx] = Value::INT64(i64::from_le_bytes( val[pos..pos+8].try_into().unwrap() ));
-                return pos + 8;
-            },
-            ValueType::BOOL => {
-                if val[pos] == 1 {
-                    self.Vals[idx] = Value::BOOL(true);
-                } else {
-                    self.Vals[idx] = Value::BOOL(false);
-                }
-                return pos + 1;
-            },            
-            ValueType::BYTES => {
-                let mut end = pos;
-                while val[end] != 0
-                {
-                    end += 1;
-                }   
-                let ret = crate::btree::util::deescapeString(val[pos..end].try_into().unwrap());
-                match &mut self.Vals[idx]
-                {
-                    Value::BYTES(v) =>
-                    {
-                        v.clear();
-                    },
-                    Other => {}
-                }
-                self.Vals[idx] = Value::BYTES(ret);                        
-                return end + 1;
-            },
-            _=>{
-                panic!()
-            }
-        }
+
+        let (v,len) = Value::decodeVal(&self.def.Types[idx],val, pos);
+        self.Vals[idx] = v;
+        return  pos + len;;
+
+        // match (self.def.Types[idx]) {
+        //     ValueType::INT8 => {
+        //         self.Vals[idx] = Value::INT8(i8::from_le_bytes([val[pos];1]));
+        //         return pos + 1;
+        //     },
+        //     ValueType::INT16 => {
+        //         self.Vals[idx] = Value::INT16(i16::from_le_bytes( val[pos..pos+2].try_into().unwrap() ));
+        //         return pos + 2;
+        //     },
+        //     ValueType::INT32 => {
+        //         self.Vals[idx] = Value::INT32(i32::from_le_bytes( val[pos..pos+4].try_into().unwrap() ));
+        //         return pos + 4;
+        //     },
+        //     ValueType::INT64 => {
+        //         self.Vals[idx] = Value::INT64(i64::from_le_bytes( val[pos..pos+8].try_into().unwrap() ));
+        //         return pos + 8;
+        //     },
+        //     ValueType::BOOL => {
+        //         if val[pos] == 1 {
+        //             self.Vals[idx] = Value::BOOL(true);
+        //         } else {
+        //             self.Vals[idx] = Value::BOOL(false);
+        //         }
+        //         return pos + 1;
+        //     },            
+        //     ValueType::BYTES => {
+        //         let mut end = pos;
+        //         while val[end] != 0
+        //         {
+        //             end += 1;
+        //         }   
+        //         let ret = crate::btree::util::deescapeString(val[pos..end].try_into().unwrap());
+        //         match &mut self.Vals[idx]
+        //         {
+        //             Value::BYTES(v) =>
+        //             {
+        //                 v.clear();
+        //             },
+        //             Other => {}
+        //         }
+        //         self.Vals[idx] = Value::BYTES(ret);                        
+        //         return end + 1;
+        //     },
+        //     _=>{
+        //         panic!()
+        //     }
+        //}
     }
 }
 

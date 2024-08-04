@@ -1,9 +1,9 @@
 use std::{sync::{Arc, RwLock}, thread, time::Duration};
+extern crate librustdb;
 
-use btree::{tx::{database::Database, dbcontext::DbContext, dbinstance::DBInstance, memoryContext::memoryContext, windowsfileContext::WinMmap}, BTREE_PAGE_SIZE};
+use librustdb::btree::{tx::{database::Database, dbcontext::DbContext, dbinstance::DBInstance, memoryContext::memoryContext, windowsfileContext::WinMmap}, BTREE_PAGE_SIZE};
 use rand::Rng;
 
-mod btree;
 #[macro_use]
 extern crate lazy_static;
  
