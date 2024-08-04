@@ -317,7 +317,7 @@ impl<'a> Record<'a> {
 
         let (v,len) = Value::decodeVal(&self.def.Types[idx],val, pos);
         self.Vals[idx] = v;
-        return  pos + len;;
+        return  pos + len;
 
         // match (self.def.Types[idx]) {
         //     ValueType::INT8 => {

@@ -17,7 +17,7 @@ fn main() {
 
     let mut handles = vec![];
     //insert records
-    for i in 1..10 {
+    for i in 1..2 {
         let ct =  db.clone();
         let handle = thread::spawn(move || {
             write(i, ct)
@@ -27,7 +27,7 @@ fn main() {
 
     thread::sleep(Duration::from_millis(20));
     //read records
-    for i in 1..10 {
+    for i in 1..2 {
         let instance =  db.clone();
         let handle = thread::spawn(move || {
             read(i, instance)

@@ -17,7 +17,7 @@ path = "src/server/main.rs"
 
 [[bin]] # Bin to run the RustDB gRPC client
 name = "rustdb-client"
-path = "src/server/main.rs"
+path = "src/client/main.rs"
 
 [build-dependencies]
 tonic-build = "0.12"

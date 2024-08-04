@@ -11,13 +11,13 @@ pub enum ValueError{
 
 #[derive(Serialize,Clone,Deserialize, Debug,PartialEq)]
 pub enum ValueType {
-    BYTES,
-    INT64,
-    INT32,
-    INT16,
-    INT8,
-    ID,
-    BOOL
+    BYTES = 0,
+    INT64 = 1,
+    INT32 = 2,
+    INT16 = 3,
+    INT8 =4 ,
+    ID =6,
+    BOOL =5
 }
 
 impl From<&str> for ValueType {
@@ -141,8 +141,14 @@ impl Value{
                 {
                     end += 1;
                 }   
-                let ret = crate::btree::util::deescapeString(val[pos..end].try_into().unwrap());
-                return (Value::BYTES(ret), end - pos);
+                if end != pos
+                {
+                    let ret = crate::btree::util::deescapeString(val[pos..end].try_into().unwrap());
+                    return (Value::BYTES(ret), end - pos  + 1);
+                }
+                else {
+                    return (Value::BYTES(Vec::new()), end - pos + 1);
+                }
             },
             _=>{
                 panic!()
